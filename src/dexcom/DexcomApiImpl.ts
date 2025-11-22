@@ -6,8 +6,14 @@ import { DexcomApiCallback } from "./DexcomApiCallback";
 import { DexcomRawReading } from "./DexcomRawReading";
 import { DexcomReadingImpl } from "./DexcomReadingImpl";
 
-interface LoginRequestBody {
+interface AuthRequestBody {
     accountName: string;
+    password: string;
+    applicationId: string;
+}
+
+interface LoginByIdRequestBody {
+    accountId: string;
     password: string;
     applicationId: string;
 }
@@ -60,14 +66,30 @@ class DexcomApiImpl implements DexcomApi {
         );
     }
 
-    private login(callback?: request.RequestCallback): request.Request {
+    private stripQuotes(quotedString: string): string {
+        return quotedString.substring(1, quotedString.length - 1);
+    }
+
+    private authenticatePublisherAccount(callback?: request.RequestCallback): request.Request {
         return this.doPost(
-            this._server + "/ShareWebServices/Services/General/LoginPublisherAccountByName",
+            this._server + "/ShareWebServices/Services/General/AuthenticatePublisherAccount",
             {
                 "accountName": this._username,
                 "password": this._password,
                 "applicationId": DexcomApiImpl.APPLICATION_ID
-            } as LoginRequestBody,
+            } as AuthRequestBody,
+            callback
+        );
+    }
+
+    private loginById(accountId: string, callback?: request.RequestCallback): request.Request {
+        return this.doPost(
+            this._server + "/ShareWebServices/Services/General/LoginPublisherAccountById",
+            {
+                "accountId": accountId,
+                "password": this._password,
+                "applicationId": DexcomApiImpl.APPLICATION_ID
+            } as LoginByIdRequestBody,
             callback
         );
     }
@@ -87,32 +109,53 @@ class DexcomApiImpl implements DexcomApi {
     }
 
     public fetchData(callback: DexcomApiCallback, maxCount?: number, minutes?: number): void {
-        this.login((error: any, response: request.Response, body: any) => {
+        // Step 1: Authenticate to get account UUID
+        this.authenticatePublisherAccount((error: any, response: request.Response, body: any) => {
             console.log(error);
             if (error != null || response.statusCode !== 200) {
                 callback({
                     error: {
                         statusCode: response == undefined ? -1 : response.statusCode,
-                        message: "Login fail: " + (error == undefined ? "" : error)
+                        message: "Authenticate account fail: " + (error == undefined ? "" : error)
                     },
                     readings: []
                 });
             } else {
-                let sessionId: string = (body as string).substring(1, (body as string).length - 1)
-                this.fetchLatest(sessionId, maxCount, minutes, (_error: any, _response: request.Response, body: any) => {
+                // Strip surrounding quotes from UUID
+                let accountId: string = this.stripQuotes(body as string);
+
+                // Step 2: Login with account UUID to get session ID
+                this.loginById(accountId, (_error: any, _response: request.Response, _body: any) => {
+                    console.log(_error);
                     if (_error != null || _response.statusCode !== 200) {
                         callback({
                             error: {
                                 statusCode: _response == undefined ? -1 : _response.statusCode,
-                                message: "Fetch readings fail: "+ (_error == undefined ? "" : _error)
+                                message: "Login fail: " + (_error == undefined ? "" : _error)
                             },
                             readings: []
                         });
                     } else {
-                        const rawReadings: DexcomRawReading[] = JSON.parse(body);
-                        callback({
-                            error: undefined,
-                            readings: rawReadings.map(reading => new DexcomReadingImpl(reading))
+                        // Strip surrounding quotes from session ID
+                        let sessionId: string = this.stripQuotes(_body as string);
+
+                        // Step 3: Fetch data with session ID
+                        this.fetchLatest(sessionId, maxCount, minutes, (__error: any, __response: request.Response, __body: any) => {
+                            if (__error != null || __response.statusCode !== 200) {
+                                callback({
+                                    error: {
+                                        statusCode: __response == undefined ? -1 : __response.statusCode,
+                                        message: "Fetch readings fail: " + (__error == undefined ? "" : __error)
+                                    },
+                                    readings: []
+                                });
+                            } else {
+                                const rawReadings: DexcomRawReading[] = JSON.parse(__body);
+                                callback({
+                                    error: undefined,
+                                    readings: rawReadings.map(reading => new DexcomReadingImpl(reading))
+                                });
+                            }
                         });
                     }
                 });
