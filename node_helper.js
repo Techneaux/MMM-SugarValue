@@ -101,6 +101,20 @@
                 body: bodyAsString
             }, callback);
         };
+        DexcomApiImpl.prototype.authenticatePublisherAccount = function (callback) {
+            return this.doPost(this._server + "/ShareWebServices/Services/General/AuthenticatePublisherAccount", {
+                "accountName": this._username,
+                "password": this._password,
+                "applicationId": DexcomApiImpl.APPLICATION_ID
+            }, callback);
+        };
+        DexcomApiImpl.prototype.loginById = function (accountId, callback) {
+            return this.doPost(this._server + "/ShareWebServices/Services/General/LoginPublisherAccountById", {
+                "accountId": accountId,
+                "password": this._password,
+                "applicationId": DexcomApiImpl.APPLICATION_ID
+            }, callback);
+        };
         DexcomApiImpl.prototype.login = function (callback) {
             return this.doPost(this._server + "/ShareWebServices/Services/General/LoginPublisherAccountByName", {
                 "accountName": this._username,
@@ -117,34 +131,54 @@
         };
         DexcomApiImpl.prototype.fetchData = function (callback, maxCount, minutes) {
             var _this = this;
-            this.login(function (error, response, body) {
+            // Step 1: Authenticate to get account UUID
+            this.authenticatePublisherAccount(function (error, response, body) {
                 console.log(error);
                 if (error != null || response.statusCode !== 200) {
                     callback({
                         error: {
                             statusCode: response == undefined ? -1 : response.statusCode,
-                            message: "Login fail: " + (error == undefined ? "" : error)
+                            message: "Authenticate account fail: " + (error == undefined ? "" : error)
                         },
                         readings: []
                     });
                 }
                 else {
-                    var sessionId = body.substring(1, body.length - 1);
-                    _this.fetchLatest(sessionId, maxCount, minutes, function (_error, _response, body) {
+                    // Strip surrounding quotes from UUID
+                    var accountId = body.substring(1, body.length - 1);
+                    // Step 2: Login with account UUID to get session ID
+                    _this.loginById(accountId, function (_error, _response, _body) {
+                        console.log(_error);
                         if (_error != null || _response.statusCode !== 200) {
                             callback({
                                 error: {
                                     statusCode: _response == undefined ? -1 : _response.statusCode,
-                                    message: "Fetch readings fail: " + (_error == undefined ? "" : _error)
+                                    message: "Login fail: " + (_error == undefined ? "" : _error)
                                 },
                                 readings: []
                             });
                         }
                         else {
-                            var rawReadings = JSON.parse(body);
-                            callback({
-                                error: undefined,
-                                readings: rawReadings.map(function (reading) { return new DexcomReadingImpl(reading); })
+                            // Strip surrounding quotes from session ID
+                            var sessionId = _body.substring(1, _body.length - 1);
+                            // Step 3: Fetch data with session ID
+                            _this.fetchLatest(sessionId, maxCount, minutes, function (__error, __response, __body) {
+                                if (__error != null || __response.statusCode !== 200) {
+                                    callback({
+                                        error: {
+                                            statusCode: __response == undefined ? -1 : __response.statusCode,
+                                            message: "Fetch readings fail: " + (__error == undefined ? "" : __error)
+                                        },
+                                        readings: []
+                                    });
+                                }
+                                else {
+                                    var rawReadings = JSON.parse(__body);
+                                    callback({
+                                        error: undefined,
+                                        readings: rawReadings.map(function (reading) { return new DexcomReadingImpl(reading); })
+                                    });
+                                }
                             });
                         }
                     });
