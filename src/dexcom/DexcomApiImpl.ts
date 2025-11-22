@@ -66,6 +66,10 @@ class DexcomApiImpl implements DexcomApi {
         );
     }
 
+    private stripQuotes(quotedString: string): string {
+        return quotedString.substring(1, quotedString.length - 1);
+    }
+
     private authenticatePublisherAccount(callback?: request.RequestCallback): request.Request {
         return this.doPost(
             this._server + "/ShareWebServices/Services/General/AuthenticatePublisherAccount",
@@ -86,18 +90,6 @@ class DexcomApiImpl implements DexcomApi {
                 "password": this._password,
                 "applicationId": DexcomApiImpl.APPLICATION_ID
             } as LoginByIdRequestBody,
-            callback
-        );
-    }
-
-    private login(callback?: request.RequestCallback): request.Request {
-        return this.doPost(
-            this._server + "/ShareWebServices/Services/General/LoginPublisherAccountByName",
-            {
-                "accountName": this._username,
-                "password": this._password,
-                "applicationId": DexcomApiImpl.APPLICATION_ID
-            } as AuthRequestBody,
             callback
         );
     }
@@ -130,8 +122,8 @@ class DexcomApiImpl implements DexcomApi {
                 });
             } else {
                 // Strip surrounding quotes from UUID
-                let accountId: string = (body as string).substring(1, (body as string).length - 1);
-                
+                let accountId: string = this.stripQuotes(body as string);
+
                 // Step 2: Login with account UUID to get session ID
                 this.loginById(accountId, (_error: any, _response: request.Response, _body: any) => {
                     console.log(_error);
@@ -145,8 +137,8 @@ class DexcomApiImpl implements DexcomApi {
                         });
                     } else {
                         // Strip surrounding quotes from session ID
-                        let sessionId: string = (_body as string).substring(1, (_body as string).length - 1);
-                        
+                        let sessionId: string = this.stripQuotes(_body as string);
+
                         // Step 3: Fetch data with session ID
                         this.fetchLatest(sessionId, maxCount, minutes, (__error: any, __response: request.Response, __body: any) => {
                             if (__error != null || __response.statusCode !== 200) {

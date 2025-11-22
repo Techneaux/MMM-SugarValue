@@ -1,3 +1,9 @@
 node_modules
 .DS_Store
 dist
+.env
+.env.example
+CLAUDE.md
+test-dexcom.js
+test-all-servers.js
+check-env.js
