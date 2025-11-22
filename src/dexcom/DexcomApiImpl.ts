@@ -6,13 +6,7 @@ import { DexcomApiCallback } from "./DexcomApiCallback";
 import { DexcomRawReading } from "./DexcomRawReading";
 import { DexcomReadingImpl } from "./DexcomReadingImpl";
 
-interface LoginRequestBody {
-    accountName: string;
-    password: string;
-    applicationId: string;
-}
-
-interface AuthenticatePublisherAccountRequestBody {
+interface AuthRequestBody {
     accountName: string;
     password: string;
     applicationId: string;
@@ -79,7 +73,7 @@ class DexcomApiImpl implements DexcomApi {
                 "accountName": this._username,
                 "password": this._password,
                 "applicationId": DexcomApiImpl.APPLICATION_ID
-            } as AuthenticatePublisherAccountRequestBody,
+            } as AuthRequestBody,
             callback
         );
     }
@@ -103,7 +97,7 @@ class DexcomApiImpl implements DexcomApi {
                 "accountName": this._username,
                 "password": this._password,
                 "applicationId": DexcomApiImpl.APPLICATION_ID
-            } as LoginRequestBody,
+            } as AuthRequestBody,
             callback
         );
     }
