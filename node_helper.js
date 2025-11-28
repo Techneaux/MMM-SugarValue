@@ -104,8 +104,14 @@
                 body: bodyAsString
             }, callback);
         };
-        DexcomApiImpl.prototype.stripQuotes = function (quotedString) {
-            return quotedString.substring(1, quotedString.length - 1);
+        DexcomApiImpl.prototype.stripQuotes = function (body) {
+            if (typeof body !== 'string' || body.length < 2) {
+                return null;
+            }
+            if (body[0] !== '"' || body[body.length - 1] !== '"') {
+                return null;
+            }
+            return body.substring(1, body.length - 1);
         };
         // Parse Dexcom error responses for better error messages
         DexcomApiImpl.prototype.parseErrorResponse = function (statusCode, error, body, step) {
@@ -173,6 +179,13 @@
                 else {
                     // Strip surrounding quotes from UUID
                     var accountId = _this.stripQuotes(body);
+                    if (!accountId) {
+                        callback({
+                            error: { statusCode: response.statusCode, message: "Invalid accountId response" },
+                            readings: []
+                        });
+                        return;
+                    }
                     // Step 2: Login with account UUID to get session ID
                     _this.loginById(accountId, function (_error, _response, _body) {
                         console.log(_error);
@@ -188,6 +201,13 @@
                         else {
                             // Strip surrounding quotes from session ID
                             var sessionId = _this.stripQuotes(_body);
+                            if (!sessionId) {
+                                callback({
+                                    error: { statusCode: _response.statusCode, message: "Invalid session response" },
+                                    readings: []
+                                });
+                                return;
+                            }
                             // Step 3: Fetch data with session ID
                             _this.fetchLatest(sessionId, maxCount, minutes, function (__error, __response, __body) {
                                 if (__error != null || __response.statusCode !== 200) {
@@ -256,11 +276,12 @@
                     callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
                 }
                 else {
-                    if (typeof body !== 'string' || !body) {
+                    var sessionId = _this.stripQuotes(body);
+                    if (!sessionId) {
                         callback({ error: _this.parseErrorResponse(response.statusCode, "Invalid session response", body, "Login"), readings: [] });
                         return;
                     }
-                    _this._sessionId = _this.stripQuotes(body);
+                    _this._sessionId = sessionId;
                     console.log("[" + new Date().toISOString() + "] Session obtained");
                     _this.fetchLatest(_this._sessionId, maxCount, minutes, handleFetchResult);
                 }
@@ -284,11 +305,12 @@
                         callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Authenticate"), readings: [] });
                     }
                     else {
-                        if (typeof body !== 'string' || !body) {
+                        var accountId = _this.stripQuotes(body);
+                        if (!accountId) {
                             callback({ error: _this.parseErrorResponse(response.statusCode, "Invalid accountId response", body, "Authenticate"), readings: [] });
                             return;
                         }
-                        _this._accountId = _this.stripQuotes(body);
+                        _this._accountId = accountId;
                         console.log("[" + new Date().toISOString() + "] AccountId cached");
                         _this.loginById(_this._accountId, handleLoginResult);
                     }

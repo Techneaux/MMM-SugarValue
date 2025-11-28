@@ -71,8 +71,14 @@ class DexcomApiImpl implements DexcomApi {
         );
     }
 
-    private stripQuotes(quotedString: string): string {
-        return quotedString.substring(1, quotedString.length - 1);
+    private stripQuotes(body: any): string | null {
+        if (typeof body !== 'string' || body.length < 2) {
+            return null;
+        }
+        if (body[0] !== '"' || body[body.length - 1] !== '"') {
+            return null;
+        }
+        return body.substring(1, body.length - 1);
     }
 
     // Parse Dexcom error responses for better error messages
@@ -154,7 +160,14 @@ class DexcomApiImpl implements DexcomApi {
                 });
             } else {
                 // Strip surrounding quotes from UUID
-                let accountId: string = this.stripQuotes(body as string);
+                const accountId = this.stripQuotes(body);
+                if (!accountId) {
+                    callback({
+                        error: { statusCode: response.statusCode, message: "Invalid accountId response" },
+                        readings: []
+                    });
+                    return;
+                }
 
                 // Step 2: Login with account UUID to get session ID
                 this.loginById(accountId, (_error: any, _response: request.Response, _body: any) => {
@@ -169,7 +182,14 @@ class DexcomApiImpl implements DexcomApi {
                         });
                     } else {
                         // Strip surrounding quotes from session ID
-                        let sessionId: string = this.stripQuotes(_body as string);
+                        const sessionId = this.stripQuotes(_body);
+                        if (!sessionId) {
+                            callback({
+                                error: { statusCode: _response.statusCode, message: "Invalid session response" },
+                                readings: []
+                            });
+                            return;
+                        }
 
                         // Step 3: Fetch data with session ID
                         this.fetchLatest(sessionId, maxCount, minutes, (__error: any, __response: request.Response, __body: any) => {
@@ -234,11 +254,12 @@ class DexcomApiImpl implements DexcomApi {
                 this._accountId = null;
                 callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
             } else {
-                if (typeof body !== 'string' || !body) {
+                const sessionId = this.stripQuotes(body);
+                if (!sessionId) {
                     callback({ error: this.parseErrorResponse(response.statusCode, "Invalid session response", body, "Login"), readings: [] });
                     return;
                 }
-                this._sessionId = this.stripQuotes(body);
+                this._sessionId = sessionId;
                 console.log(`[${new Date().toISOString()}] Session obtained`);
                 this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
             }
@@ -259,11 +280,12 @@ class DexcomApiImpl implements DexcomApi {
                 } else if (error != null || response.statusCode !== 200) {
                     callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Authenticate"), readings: [] });
                 } else {
-                    if (typeof body !== 'string' || !body) {
+                    const accountId = this.stripQuotes(body);
+                    if (!accountId) {
                         callback({ error: this.parseErrorResponse(response.statusCode, "Invalid accountId response", body, "Authenticate"), readings: [] });
                         return;
                     }
-                    this._accountId = this.stripQuotes(body);
+                    this._accountId = accountId;
                     console.log(`[${new Date().toISOString()}] AccountId cached`);
                     this.loginById(this._accountId, handleLoginResult);
                 }
