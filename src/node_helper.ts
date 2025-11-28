@@ -64,6 +64,7 @@ module.exports = NodeHelper.create({
                 this._sendSocketNotification(ModuleNotification.DATA, { apiResponse: response });
             }, 3, 1);
         } catch (error) {
+            callbackInvoked = true;  // Prevent timeout from also firing
             console.error(`[${new Date().toISOString()}] Exception in fetchData:`, error);
             clearTimeout(timeoutId);
             this._sendSocketNotification(ModuleNotification.DATA, {

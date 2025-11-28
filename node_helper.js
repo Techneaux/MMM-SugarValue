@@ -256,6 +256,10 @@
                     callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
                 }
                 else {
+                    if (typeof body !== 'string' || !body) {
+                        callback({ error: _this.parseErrorResponse(response.statusCode, "Invalid session response", body, "Login"), readings: [] });
+                        return;
+                    }
                     _this._sessionId = _this.stripQuotes(body);
                     console.log("[" + new Date().toISOString() + "] Session obtained");
                     _this.fetchLatest(_this._sessionId, maxCount, minutes, handleFetchResult);
@@ -280,6 +284,10 @@
                         callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Authenticate"), readings: [] });
                     }
                     else {
+                        if (typeof body !== 'string' || !body) {
+                            callback({ error: _this.parseErrorResponse(response.statusCode, "Invalid accountId response", body, "Authenticate"), readings: [] });
+                            return;
+                        }
                         _this._accountId = _this.stripQuotes(body);
                         console.log("[" + new Date().toISOString() + "] AccountId cached");
                         _this.loginById(_this._accountId, handleLoginResult);
@@ -351,6 +359,7 @@
                 }, 3, 1);
             }
             catch (error) {
+                callbackInvoked = true; // Prevent timeout from also firing
                 console.error("[" + new Date().toISOString() + "] Exception in fetchData:", error);
                 clearTimeout(timeoutId);
                 this._sendSocketNotification(ModuleNotification.DATA, {

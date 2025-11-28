@@ -234,7 +234,11 @@ class DexcomApiImpl implements DexcomApi {
                 this._accountId = null;
                 callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
             } else {
-                this._sessionId = this.stripQuotes(body as string);
+                if (typeof body !== 'string' || !body) {
+                    callback({ error: this.parseErrorResponse(response.statusCode, "Invalid session response", body, "Login"), readings: [] });
+                    return;
+                }
+                this._sessionId = this.stripQuotes(body);
                 console.log(`[${new Date().toISOString()}] Session obtained`);
                 this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
             }
@@ -255,7 +259,11 @@ class DexcomApiImpl implements DexcomApi {
                 } else if (error != null || response.statusCode !== 200) {
                     callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Authenticate"), readings: [] });
                 } else {
-                    this._accountId = this.stripQuotes(body as string);
+                    if (typeof body !== 'string' || !body) {
+                        callback({ error: this.parseErrorResponse(response.statusCode, "Invalid accountId response", body, "Authenticate"), readings: [] });
+                        return;
+                    }
+                    this._accountId = this.stripQuotes(body);
                     console.log(`[${new Date().toISOString()}] AccountId cached`);
                     this.loginById(this._accountId, handleLoginResult);
                 }
