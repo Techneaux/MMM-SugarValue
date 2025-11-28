@@ -214,91 +214,75 @@
         };
         /**
          * Fetch data with session + UUID caching to reduce API calls.
+         * Single-try design: tries once with current cache state, clears caches on failure.
+         * External retry wrapper (fetchDataWithRetry) handles all retries.
+         *
          * - Cold start: 3 calls (auth → login → fetch)
          * - Normal poll: 1 call (fetch with cached session)
-         * - Session expired: 2 calls (login with cached UUID → fetch)
+         * - Session expired: returns error, clears sessionId. Next retry does login → fetch.
          */
         DexcomApiImpl.prototype.fetchDataCached = function (callback, maxCount, minutes) {
             var _this = this;
+            // Helper to handle fetch result
+            var handleFetchResult = function (error, response, body) {
+                if (!response) {
+                    callback({ error: _this.parseErrorResponse(undefined, error, body, "Fetch readings"), readings: [] });
+                }
+                else if (error != null || response.statusCode !== 200) {
+                    // Session invalid - clear it so next retry starts fresh
+                    console.log("[" + new Date().toISOString() + "] Fetch failed, clearing session");
+                    _this._sessionId = null;
+                    callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Fetch readings"), readings: [] });
+                }
+                else {
+                    try {
+                        var rawReadings = JSON.parse(body);
+                        callback({ error: undefined, readings: rawReadings.map(function (r) { return new DexcomReadingImpl(r); }) });
+                    }
+                    catch (parseError) {
+                        callback({ error: _this.parseErrorResponse(response.statusCode, parseError, body, "Parse readings"), readings: [] });
+                    }
+                }
+            };
+            // Helper to handle login result then fetch
+            var handleLoginResult = function (error, response, body) {
+                if (!response) {
+                    callback({ error: _this.parseErrorResponse(undefined, error, body, "Login"), readings: [] });
+                }
+                else if (error != null || response.statusCode !== 200) {
+                    // AccountId may be stale - clear it so next retry does full auth
+                    console.log("[" + new Date().toISOString() + "] Login failed, clearing accountId");
+                    _this._accountId = null;
+                    callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
+                }
+                else {
+                    _this._sessionId = _this.stripQuotes(body);
+                    console.log("[" + new Date().toISOString() + "] Session obtained");
+                    _this.fetchLatest(_this._sessionId, maxCount, minutes, handleFetchResult);
+                }
+            };
+            // Main logic - try with current cache state
             if (this._sessionId) {
-                // Try with cached session first
-                this.fetchLatest(this._sessionId, maxCount, minutes, function (error, response, body) {
-                    if (error != null || (response && response.statusCode !== 200)) {
-                        // Session expired or error, clear session only (keep accountId for faster re-auth)
-                        console.log("[" + new Date().toISOString() + "] Session expired or fetch failed, re-authenticating...");
-                        _this._sessionId = null;
-                        _this.fetchDataCached(callback, maxCount, minutes); // Retry with cached accountId
-                    }
-                    else if (!response) {
-                        // No response object - network error
-                        callback({
-                            error: _this.parseErrorResponse(undefined, error, body, "Fetch readings"),
-                            readings: []
-                        });
-                    }
-                    else {
-                        // Success with cached session
-                        try {
-                            var rawReadings = JSON.parse(body);
-                            callback({
-                                error: undefined,
-                                readings: rawReadings.map(function (reading) { return new DexcomReadingImpl(reading); })
-                            });
-                        }
-                        catch (parseError) {
-                            callback({
-                                error: _this.parseErrorResponse(response.statusCode, parseError, body, "Parse readings"),
-                                readings: []
-                            });
-                        }
-                    }
-                });
+                console.log("[" + new Date().toISOString() + "] Using cached session");
+                this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
             }
             else if (this._accountId) {
-                // Have cached accountId, just need new session (2 API calls instead of 3)
-                console.log("[" + new Date().toISOString() + "] Using cached accountId, fetching new session...");
-                this.loginById(this._accountId, function (error, response, body) {
-                    if (error != null || (response && response.statusCode !== 200)) {
-                        // Login failed, clear accountId and do full auth
-                        console.log("[" + new Date().toISOString() + "] Login with cached accountId failed, doing full auth...");
-                        _this._accountId = null;
-                        _this.fetchDataCached(callback, maxCount, minutes);
-                    }
-                    else if (!response) {
-                        // No response object - network error
-                        callback({
-                            error: _this.parseErrorResponse(undefined, error, body, "Login"),
-                            readings: []
-                        });
-                    }
-                    else {
-                        _this._sessionId = _this.stripQuotes(body);
-                        console.log("[" + new Date().toISOString() + "] New session obtained");
-                        _this.fetchDataCached(callback, maxCount, minutes); // Now fetch with new session
-                    }
-                });
+                console.log("[" + new Date().toISOString() + "] Using cached accountId, need new session");
+                this.loginById(this._accountId, handleLoginResult);
             }
             else {
-                // Cold start: do full auth flow and cache both
-                console.log("[" + new Date().toISOString() + "] Cold start, doing full authentication...");
+                console.log("[" + new Date().toISOString() + "] Cold start, full authentication");
                 this.authenticatePublisherAccount(function (error, response, body) {
-                    if (error != null || (response && response.statusCode !== 200)) {
-                        callback({
-                            error: _this.parseErrorResponse(response ? response.statusCode : undefined, error, body, "Authenticate"),
-                            readings: []
-                        });
+                    if (!response) {
+                        callback({ error: _this.parseErrorResponse(undefined, error, body, "Authenticate"), readings: [] });
                     }
-                    else if (!response) {
-                        // No response object - network error
-                        callback({
-                            error: _this.parseErrorResponse(undefined, error, body, "Authenticate"),
-                            readings: []
-                        });
+                    else if (error != null || response.statusCode !== 200) {
+                        callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Authenticate"), readings: [] });
                     }
                     else {
                         _this._accountId = _this.stripQuotes(body);
-                        console.log("[" + new Date().toISOString() + "] Account UUID cached");
-                        _this.fetchDataCached(callback, maxCount, minutes); // Continue with login
+                        console.log("[" + new Date().toISOString() + "] AccountId cached");
+                        _this.loginById(_this._accountId, handleLoginResult);
                     }
                 });
             }
@@ -342,7 +326,7 @@
         fetchData: function (api, updateSecs) {
             var _this = this;
             var callbackInvoked = false;
-            var timeoutMs = 45000; // 45 second timeout (allows for 3 retries with backoff: ~7s + buffer)
+            var timeoutMs = 70000; // 70 second timeout (3 attempts × 20s per request + ~7s backoff delays)
             // Set timeout to detect if API call gets stuck
             var timeoutId = setTimeout(function () {
                 if (!callbackInvoked) {

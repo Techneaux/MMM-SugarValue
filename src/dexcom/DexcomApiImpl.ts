@@ -197,81 +197,67 @@ class DexcomApiImpl implements DexcomApi {
 
     /**
      * Fetch data with session + UUID caching to reduce API calls.
+     * Single-try design: tries once with current cache state, clears caches on failure.
+     * External retry wrapper (fetchDataWithRetry) handles all retries.
+     *
      * - Cold start: 3 calls (auth → login → fetch)
      * - Normal poll: 1 call (fetch with cached session)
-     * - Session expired: 2 calls (login with cached UUID → fetch)
+     * - Session expired: returns error, clears sessionId. Next retry does login → fetch.
      */
     public fetchDataCached(callback: DexcomApiCallback, maxCount?: number, minutes?: number): void {
+        // Helper to handle fetch result
+        const handleFetchResult = (error: any, response: request.Response, body: any) => {
+            if (!response) {
+                callback({ error: this.parseErrorResponse(undefined, error, body, "Fetch readings"), readings: [] });
+            } else if (error != null || response.statusCode !== 200) {
+                // Session invalid - clear it so next retry starts fresh
+                console.log(`[${new Date().toISOString()}] Fetch failed, clearing session`);
+                this._sessionId = null;
+                callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Fetch readings"), readings: [] });
+            } else {
+                try {
+                    const rawReadings: DexcomRawReading[] = JSON.parse(body);
+                    callback({ error: undefined, readings: rawReadings.map(r => new DexcomReadingImpl(r)) });
+                } catch (parseError) {
+                    callback({ error: this.parseErrorResponse(response.statusCode, parseError, body, "Parse readings"), readings: [] });
+                }
+            }
+        };
+
+        // Helper to handle login result then fetch
+        const handleLoginResult = (error: any, response: request.Response, body: any) => {
+            if (!response) {
+                callback({ error: this.parseErrorResponse(undefined, error, body, "Login"), readings: [] });
+            } else if (error != null || response.statusCode !== 200) {
+                // AccountId may be stale - clear it so next retry does full auth
+                console.log(`[${new Date().toISOString()}] Login failed, clearing accountId`);
+                this._accountId = null;
+                callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
+            } else {
+                this._sessionId = this.stripQuotes(body as string);
+                console.log(`[${new Date().toISOString()}] Session obtained`);
+                this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
+            }
+        };
+
+        // Main logic - try with current cache state
         if (this._sessionId) {
-            // Try with cached session first
-            this.fetchLatest(this._sessionId, maxCount, minutes, (error: any, response: request.Response, body: any) => {
-                if (error != null || (response && response.statusCode !== 200)) {
-                    // Session expired or error, clear session only (keep accountId for faster re-auth)
-                    console.log(`[${new Date().toISOString()}] Session expired or fetch failed, re-authenticating...`);
-                    this._sessionId = null;
-                    this.fetchDataCached(callback, maxCount, minutes); // Retry with cached accountId
-                } else if (!response) {
-                    // No response object - network error
-                    callback({
-                        error: this.parseErrorResponse(undefined, error, body, "Fetch readings"),
-                        readings: []
-                    });
-                } else {
-                    // Success with cached session
-                    try {
-                        const rawReadings: DexcomRawReading[] = JSON.parse(body);
-                        callback({
-                            error: undefined,
-                            readings: rawReadings.map(reading => new DexcomReadingImpl(reading))
-                        });
-                    } catch (parseError) {
-                        callback({
-                            error: this.parseErrorResponse(response.statusCode, parseError, body, "Parse readings"),
-                            readings: []
-                        });
-                    }
-                }
-            });
+            console.log(`[${new Date().toISOString()}] Using cached session`);
+            this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
         } else if (this._accountId) {
-            // Have cached accountId, just need new session (2 API calls instead of 3)
-            console.log(`[${new Date().toISOString()}] Using cached accountId, fetching new session...`);
-            this.loginById(this._accountId, (error: any, response: request.Response, body: any) => {
-                if (error != null || (response && response.statusCode !== 200)) {
-                    // Login failed, clear accountId and do full auth
-                    console.log(`[${new Date().toISOString()}] Login with cached accountId failed, doing full auth...`);
-                    this._accountId = null;
-                    this.fetchDataCached(callback, maxCount, minutes);
-                } else if (!response) {
-                    // No response object - network error
-                    callback({
-                        error: this.parseErrorResponse(undefined, error, body, "Login"),
-                        readings: []
-                    });
-                } else {
-                    this._sessionId = this.stripQuotes(body as string);
-                    console.log(`[${new Date().toISOString()}] New session obtained`);
-                    this.fetchDataCached(callback, maxCount, minutes); // Now fetch with new session
-                }
-            });
+            console.log(`[${new Date().toISOString()}] Using cached accountId, need new session`);
+            this.loginById(this._accountId, handleLoginResult);
         } else {
-            // Cold start: do full auth flow and cache both
-            console.log(`[${new Date().toISOString()}] Cold start, doing full authentication...`);
+            console.log(`[${new Date().toISOString()}] Cold start, full authentication`);
             this.authenticatePublisherAccount((error: any, response: request.Response, body: any) => {
-                if (error != null || (response && response.statusCode !== 200)) {
-                    callback({
-                        error: this.parseErrorResponse(response ? response.statusCode : undefined, error, body, "Authenticate"),
-                        readings: []
-                    });
-                } else if (!response) {
-                    // No response object - network error
-                    callback({
-                        error: this.parseErrorResponse(undefined, error, body, "Authenticate"),
-                        readings: []
-                    });
+                if (!response) {
+                    callback({ error: this.parseErrorResponse(undefined, error, body, "Authenticate"), readings: [] });
+                } else if (error != null || response.statusCode !== 200) {
+                    callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Authenticate"), readings: [] });
                 } else {
                     this._accountId = this.stripQuotes(body as string);
-                    console.log(`[${new Date().toISOString()}] Account UUID cached`);
-                    this.fetchDataCached(callback, maxCount, minutes); // Continue with login
+                    console.log(`[${new Date().toISOString()}] AccountId cached`);
+                    this.loginById(this._accountId, handleLoginResult);
                 }
             });
         }

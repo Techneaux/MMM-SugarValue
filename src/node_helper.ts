@@ -38,7 +38,7 @@ module.exports = NodeHelper.create({
     // },
     fetchData(api: DexcomApi, updateSecs: number) {
         let callbackInvoked = false;
-        const timeoutMs = 45000; // 45 second timeout (allows for 3 retries with backoff: ~7s + buffer)
+        const timeoutMs = 70000; // 70 second timeout (3 attempts × 20s per request + ~7s backoff delays)
 
         // Set timeout to detect if API call gets stuck
         const timeoutId = setTimeout(() => {
