@@ -14,6 +14,7 @@ interface MagicMirrorNodeHelperApi {
 
 interface ModuleNodeHelper extends MagicMirrorNodeHelperApi {
     fetchData(api: DexcomApi, updateSecs: number): void;
+    fetchDataWithRetry(api: DexcomApi, callback: (response: DexcomApiResponse) => void, maxRetries: number, attempt: number): void;
     _sendSocketNotification(notification: ModuleNotification, payload: NotificationPayload): void;
 }
 
@@ -37,12 +38,12 @@ module.exports = NodeHelper.create({
     // },
     fetchData(api: DexcomApi, updateSecs: number) {
         let callbackInvoked = false;
-        const timeoutMs = 30000; // 30 second timeout for API call
+        const timeoutMs = 45000; // 45 second timeout (allows for 3 retries with backoff: ~7s + buffer)
 
         // Set timeout to detect if API call gets stuck
         const timeoutId = setTimeout(() => {
             if (!callbackInvoked) {
-                console.error("Dexcom API call timed out after", timeoutMs, "ms");
+                console.error(`[${new Date().toISOString()}] Dexcom API call timed out after ${timeoutMs}ms`);
                 this._sendSocketNotification(ModuleNotification.DATA, {
                     apiResponse: {
                         error: {
@@ -55,15 +56,15 @@ module.exports = NodeHelper.create({
             }
         }, timeoutMs);
 
-        // Attempt to fetch data
+        // Attempt to fetch data with retry logic
         try {
-            api.fetchData((response: DexcomApiResponse) => {
+            this.fetchDataWithRetry(api, (response: DexcomApiResponse) => {
                 callbackInvoked = true;
                 clearTimeout(timeoutId);
                 this._sendSocketNotification(ModuleNotification.DATA, { apiResponse: response });
-            }, 1);
+            }, 3, 1);
         } catch (error) {
-            console.error("Exception in fetchData:", error);
+            console.error(`[${new Date().toISOString()}] Exception in fetchData:`, error);
             clearTimeout(timeoutId);
             this._sendSocketNotification(ModuleNotification.DATA, {
                 apiResponse: {
@@ -80,6 +81,25 @@ module.exports = NodeHelper.create({
         setTimeout(() => {
             this.fetchData(api, updateSecs);
         }, updateSecs * 1000);
+    },
+
+    // Retry wrapper - retries are silent (no UI update until final result)
+    fetchDataWithRetry(api: DexcomApi, callback: (response: DexcomApiResponse) => void, maxRetries: number, attempt: number) {
+        api.fetchDataCached((response: DexcomApiResponse) => {
+            if (response.error && attempt < maxRetries) {
+                const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+                console.log(`[${new Date().toISOString()}] Attempt ${attempt}/${maxRetries} failed: ${response.error.message}. Retrying in ${delay}ms...`);
+                setTimeout(() => {
+                    this.fetchDataWithRetry(api, callback, maxRetries, attempt + 1);
+                }, delay);
+            } else {
+                // Only callback (which triggers UI update) on success or final failure
+                if (response.error) {
+                    console.error(`[${new Date().toISOString()}] All ${maxRetries} attempts failed: ${response.error.message}`);
+                }
+                callback(response);
+            }
+        }, 1);
     },
     _sendSocketNotification(notification: ModuleNotification, payload: NotificationPayload): void {
         console.log("Sending", notification, payload);

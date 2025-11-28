@@ -5722,6 +5722,7 @@
             return ['sugarvalue.css'];
         },
         message: "Loading...",
+        isError: false,
         reading: undefined,
         clockSpan: undefined,
         getDom: function () {
@@ -5729,6 +5730,10 @@
             wrapper.className = "mmm-sugar-value";
             if (this.message !== undefined) {
                 wrapper.innerText = this.message;
+                // Style error messages with red text
+                if (this.isError) {
+                    wrapper.className += " dimmed light small text-danger";
+                }
             }
             else if (this.reading == undefined) {
                 wrapper.innerText = "Reading not available";
@@ -5841,11 +5846,18 @@
                 var apiResponse = payload.apiResponse;
                 if (apiResponse !== undefined) {
                     if (apiResponse.error !== undefined) {
-                        this.message = apiResponse.error.message + ":" + apiResponse.error.statusCode;
+                        // Format error message with status code
+                        var statusCode = apiResponse.error.statusCode;
+                        var errorMsg = apiResponse.error.message;
+                        this.message = statusCode === -1
+                            ? errorMsg // Network errors don't need status code shown
+                            : errorMsg + " (HTTP " + statusCode + ")";
+                        this.isError = true;
                     }
                     else {
                         this.reading = apiResponse.readings.length > 0 ? apiResponse.readings[0] : undefined;
                         this.message = undefined;
+                        this.isError = false;
                     }
                     this._updateDom();
                 }
