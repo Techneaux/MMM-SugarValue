@@ -75,6 +75,9 @@
 
     var DexcomApiImpl = /** @class */ (function () {
         function DexcomApiImpl(server, username, password) {
+            // Cached credentials to reduce API calls
+            this._accountId = null; // Cached permanently until module restart
+            this._sessionId = null; // Cached until it expires (non-200 response)
             this._server = server;
             this._username = username;
             this._password = password;
@@ -101,6 +104,43 @@
                 body: bodyAsString
             }, callback);
         };
+        DexcomApiImpl.prototype.stripQuotes = function (body) {
+            if (typeof body !== 'string' || body.length < 2) {
+                return null;
+            }
+            if (body[0] !== '"' || body[body.length - 1] !== '"') {
+                return null;
+            }
+            return body.substring(1, body.length - 1);
+        };
+        // Parse Dexcom error responses for better error messages
+        DexcomApiImpl.prototype.parseErrorResponse = function (statusCode, error, body, step) {
+            var message = step + " failed";
+            var resolvedStatusCode = statusCode !== undefined ? statusCode : -1;
+            // Try to parse Dexcom's JSON error response (contains Code, Message, SubCode)
+            if (body && typeof body === 'string') {
+                try {
+                    var parsed = JSON.parse(body);
+                    if (parsed.Message) {
+                        message = step + ": " + parsed.Message;
+                        if (parsed.Code)
+                            message += " (" + parsed.Code + ")";
+                    }
+                }
+                catch (e) {
+                    // Not JSON, use raw error if available
+                    if (error)
+                        message = step + ": " + error;
+                }
+            }
+            else if (error) {
+                message = step + ": " + error;
+            }
+            return {
+                statusCode: resolvedStatusCode,
+                message: message
+            };
+        };
         DexcomApiImpl.prototype.authenticatePublisherAccount = function (callback) {
             return this.doPost(this._server + "/ShareWebServices/Services/General/AuthenticatePublisherAccount", {
                 "accountName": this._username,
@@ -115,13 +155,6 @@
                 "applicationId": DexcomApiImpl.APPLICATION_ID
             }, callback);
         };
-        DexcomApiImpl.prototype.login = function (callback) {
-            return this.doPost(this._server + "/ShareWebServices/Services/General/LoginPublisherAccountByName", {
-                "accountName": this._username,
-                "password": this._password,
-                "applicationId": DexcomApiImpl.APPLICATION_ID
-            }, callback);
-        };
         DexcomApiImpl.prototype.fetchLatest = function (sessionId, maxCount, minutes, callback) {
             return this.doPost(this._server + "/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues?" + qs__namespace.stringify({
                 sessionID: sessionId,
@@ -129,61 +162,90 @@
                 maxCount: maxCount === undefined ? 1 : Math.max(1, maxCount),
             }), undefined, callback);
         };
-        DexcomApiImpl.prototype.fetchData = function (callback, maxCount, minutes) {
+        /**
+         * Fetch data with session + UUID caching to reduce API calls.
+         * Single-try design: tries once with current cache state, clears caches on failure.
+         * External retry wrapper (fetchDataWithRetry) handles all retries.
+         *
+         * - Cold start: 3 calls (auth → login → fetch)
+         * - Normal poll: 1 call (fetch with cached session)
+         * - Session expired: returns error, clears sessionId. Next retry does login → fetch.
+         */
+        DexcomApiImpl.prototype.fetchDataCached = function (callback, maxCount, minutes) {
             var _this = this;
-            // Step 1: Authenticate to get account UUID
-            this.authenticatePublisherAccount(function (error, response, body) {
-                console.log(error);
-                if (error != null || response.statusCode !== 200) {
-                    callback({
-                        error: {
-                            statusCode: response == undefined ? -1 : response.statusCode,
-                            message: "Authenticate account fail: " + (error == undefined ? "" : error)
-                        },
-                        readings: []
-                    });
+            // Helper to handle fetch result
+            var handleFetchResult = function (error, response, body) {
+                if (!response) {
+                    callback({ error: _this.parseErrorResponse(undefined, error, body, "Fetch readings"), readings: [] });
+                }
+                else if (error != null || response.statusCode !== 200) {
+                    // Session invalid - clear it so next retry starts fresh
+                    console.log("[" + new Date().toISOString() + "] Fetch failed, clearing session");
+                    _this._sessionId = null;
+                    callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Fetch readings"), readings: [] });
                 }
                 else {
-                    // Strip surrounding quotes from UUID
-                    var accountId = body.substring(1, body.length - 1);
-                    // Step 2: Login with account UUID to get session ID
-                    _this.loginById(accountId, function (_error, _response, _body) {
-                        console.log(_error);
-                        if (_error != null || _response.statusCode !== 200) {
-                            callback({
-                                error: {
-                                    statusCode: _response == undefined ? -1 : _response.statusCode,
-                                    message: "Login fail: " + (_error == undefined ? "" : _error)
-                                },
-                                readings: []
-                            });
-                        }
-                        else {
-                            // Strip surrounding quotes from session ID
-                            var sessionId = _body.substring(1, _body.length - 1);
-                            // Step 3: Fetch data with session ID
-                            _this.fetchLatest(sessionId, maxCount, minutes, function (__error, __response, __body) {
-                                if (__error != null || __response.statusCode !== 200) {
-                                    callback({
-                                        error: {
-                                            statusCode: __response == undefined ? -1 : __response.statusCode,
-                                            message: "Fetch readings fail: " + (__error == undefined ? "" : __error)
-                                        },
-                                        readings: []
-                                    });
-                                }
-                                else {
-                                    var rawReadings = JSON.parse(__body);
-                                    callback({
-                                        error: undefined,
-                                        readings: rawReadings.map(function (reading) { return new DexcomReadingImpl(reading); })
-                                    });
-                                }
-                            });
-                        }
-                    });
+                    try {
+                        var rawReadings = JSON.parse(body);
+                        callback({ error: undefined, readings: rawReadings.map(function (r) { return new DexcomReadingImpl(r); }) });
+                    }
+                    catch (parseError) {
+                        callback({ error: _this.parseErrorResponse(response.statusCode, parseError, body, "Parse readings"), readings: [] });
+                    }
                 }
-            });
+            };
+            // Helper to handle login result then fetch
+            var handleLoginResult = function (error, response, body) {
+                if (!response) {
+                    callback({ error: _this.parseErrorResponse(undefined, error, body, "Login"), readings: [] });
+                }
+                else if (error != null || response.statusCode !== 200) {
+                    // AccountId may be stale - clear it so next retry does full auth
+                    console.log("[" + new Date().toISOString() + "] Login failed, clearing accountId");
+                    _this._accountId = null;
+                    callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
+                }
+                else {
+                    var sessionId = _this.stripQuotes(body);
+                    if (!sessionId) {
+                        callback({ error: _this.parseErrorResponse(response.statusCode, "Invalid session response", body, "Login"), readings: [] });
+                        return;
+                    }
+                    _this._sessionId = sessionId;
+                    console.log("[" + new Date().toISOString() + "] Session obtained");
+                    _this.fetchLatest(_this._sessionId, maxCount, minutes, handleFetchResult);
+                }
+            };
+            // Main logic - try with current cache state
+            if (this._sessionId) {
+                console.log("[" + new Date().toISOString() + "] Using cached session");
+                this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
+            }
+            else if (this._accountId) {
+                console.log("[" + new Date().toISOString() + "] Using cached accountId, need new session");
+                this.loginById(this._accountId, handleLoginResult);
+            }
+            else {
+                console.log("[" + new Date().toISOString() + "] Cold start, full authentication");
+                this.authenticatePublisherAccount(function (error, response, body) {
+                    if (!response) {
+                        callback({ error: _this.parseErrorResponse(undefined, error, body, "Authenticate"), readings: [] });
+                    }
+                    else if (error != null || response.statusCode !== 200) {
+                        callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Authenticate"), readings: [] });
+                    }
+                    else {
+                        var accountId = _this.stripQuotes(body);
+                        if (!accountId) {
+                            callback({ error: _this.parseErrorResponse(response.statusCode, "Invalid accountId response", body, "Authenticate"), readings: [] });
+                            return;
+                        }
+                        _this._accountId = accountId;
+                        console.log("[" + new Date().toISOString() + "] AccountId cached");
+                        _this.loginById(_this._accountId, handleLoginResult);
+                    }
+                });
+            }
         };
         DexcomApiImpl.APPLICATION_ID = "d89443d2-327c-4a6f-89e5-496bbb0317db";
         DexcomApiImpl.AGENT = "Dexcom Share/3.0.2.11 CFNetwork/711.2.23 Darwin/14.0.0";
@@ -224,11 +286,11 @@
         fetchData: function (api, updateSecs) {
             var _this = this;
             var callbackInvoked = false;
-            var timeoutMs = 30000; // 30 second timeout for API call
+            var timeoutMs = 70000; // 70 second timeout (3 attempts × 20s per request + ~7s backoff delays)
             // Set timeout to detect if API call gets stuck
             var timeoutId = setTimeout(function () {
                 if (!callbackInvoked) {
-                    console.error("Dexcom API call timed out after", timeoutMs, "ms");
+                    console.error("[" + new Date().toISOString() + "] Dexcom API call timed out after " + timeoutMs + "ms");
                     _this._sendSocketNotification(ModuleNotification.DATA, {
                         apiResponse: {
                             error: {
@@ -240,16 +302,17 @@
                     });
                 }
             }, timeoutMs);
-            // Attempt to fetch data
+            // Attempt to fetch data with retry logic
             try {
-                api.fetchData(function (response) {
+                this.fetchDataWithRetry(api, function (response) {
                     callbackInvoked = true;
                     clearTimeout(timeoutId);
                     _this._sendSocketNotification(ModuleNotification.DATA, { apiResponse: response });
-                }, 1);
+                }, 3, 1);
             }
             catch (error) {
-                console.error("Exception in fetchData:", error);
+                callbackInvoked = true; // Prevent timeout from also firing
+                console.error("[" + new Date().toISOString() + "] Exception in fetchData:", error);
                 clearTimeout(timeoutId);
                 this._sendSocketNotification(ModuleNotification.DATA, {
                     apiResponse: {
@@ -265,6 +328,26 @@
             setTimeout(function () {
                 _this.fetchData(api, updateSecs);
             }, updateSecs * 1000);
+        },
+        // Retry wrapper - retries are silent (no UI update until final result)
+        fetchDataWithRetry: function (api, callback, maxRetries, attempt) {
+            var _this = this;
+            api.fetchDataCached(function (response) {
+                if (response.error && attempt < maxRetries) {
+                    var delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+                    console.log("[" + new Date().toISOString() + "] Attempt " + attempt + "/" + maxRetries + " failed: " + response.error.message + ". Retrying in " + delay + "ms...");
+                    setTimeout(function () {
+                        _this.fetchDataWithRetry(api, callback, maxRetries, attempt + 1);
+                    }, delay);
+                }
+                else {
+                    // Only callback (which triggers UI update) on success or final failure
+                    if (response.error) {
+                        console.error("[" + new Date().toISOString() + "] All " + maxRetries + " attempts failed: " + response.error.message);
+                    }
+                    callback(response);
+                }
+            }, 1);
         },
         _sendSocketNotification: function (notification, payload) {
             console.log("Sending", notification, payload);
