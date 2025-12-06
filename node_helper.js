@@ -262,20 +262,28 @@
         ModuleNotification["CONFIG"] = "CONFIG";
         ModuleNotification["DATA"] = "DATA";
         ModuleNotification["ALL_MODULES_STARTED"] = "ALL_MODULES_STARTED";
+        ModuleNotification["REQUEST_HISTORY"] = "REQUEST_HISTORY";
+        ModuleNotification["HISTORY_DATA"] = "HISTORY_DATA";
     })(ModuleNotification || (ModuleNotification = {}));
 
     var NodeHelper = require("node_helper");
     module.exports = NodeHelper.create({
+        api: undefined,
         socketNotificationReceived: function (notification, payload) {
             var _this = this;
             switch (notification) {
                 case ModuleNotification.CONFIG:
                     var config_1 = payload.config;
                     if (config_1 !== undefined) {
-                        var api_1 = DexcomApiFactory(config_1.serverUrl, config_1.username, config_1.password);
+                        this.api = DexcomApiFactory(config_1.serverUrl, config_1.username, config_1.password);
                         setTimeout(function () {
-                            _this.fetchData(api_1, config_1.updateSecs);
+                            _this.fetchData(_this.api, config_1.updateSecs);
                         }, 500);
+                    }
+                    break;
+                case ModuleNotification.REQUEST_HISTORY:
+                    if (this.api && payload.historyRequest) {
+                        this.fetchHistoryData(payload.historyRequest.minutes);
                     }
                     break;
             }
@@ -348,6 +356,18 @@
                     callback(response);
                 }
             }, 1);
+        },
+        fetchHistoryData: function (minutes) {
+            var _this = this;
+            if (!this.api)
+                return;
+            // Calculate maxCount: ~1 reading per 5 minutes
+            var maxCount = Math.ceil(minutes / 5) + 1;
+            this.api.fetchDataCached(function (response) {
+                _this._sendSocketNotification(ModuleNotification.HISTORY_DATA, {
+                    historyResponse: response
+                });
+            }, maxCount, minutes);
         },
         _sendSocketNotification: function (notification, payload) {
             console.log("Sending", notification, payload);

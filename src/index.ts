@@ -4,6 +4,8 @@ import { NotificationPayload } from "./NotificationPayload";
 import { ModuleNotification } from "./ModuleNotification";
 import moment from 'moment';
 
+declare var Chart: any;  // Chart.js loaded via CDN
+
 interface MagicMirrorApi {
     config?: Config;
     getStyles?(): string[],
@@ -20,11 +22,25 @@ interface MagicMirrorOptions extends MagicMirrorApi {
     reading: DexcomReading | undefined;
     clockSpan: HTMLSpanElement | undefined;
 
+    // Modal state
+    isModalOpen: boolean;
+    modalElement: HTMLDivElement | undefined;
+    chartInstance: any;
+    selectedTimeRange: number;
+    isLoadingHistory: boolean;
+
     getDom: () => HTMLDivElement;
+    getScripts: () => string[];
     start: () => void;
     _sendSocketNotification(notification: string, payload: NotificationPayload): void;
     _updateDom(): void;
     _createIcon(className: string): HTMLSpanElement;
+    _openModal(): void;
+    _closeModal(): void;
+    _createModalDom(): HTMLDivElement;
+    _renderChart(readings: DexcomReading[]): void;
+    _requestHistoryData(minutes: number): void;
+    _updateTimeRangeButtons(minutes: number): void;
 }
 
 interface MagicMirrorModule {
@@ -44,13 +60,30 @@ Module.register("MMM-SugarValue", {
     getStyles(): string[] {
         return[ 'sugarvalue.css' ]
     },
+    getScripts(): string[] {
+        return ["https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"];
+    },
     message: "Loading...",
     isError: false,
     reading: undefined,
     clockSpan: undefined,
+    // Modal state
+    isModalOpen: false,
+    modalElement: undefined,
+    chartInstance: undefined,
+    selectedTimeRange: 180,
+    isLoadingHistory: false,
     getDom(): HTMLDivElement {
         const wrapper: HTMLDivElement = document.createElement("div");
         wrapper.className = "mmm-sugar-value";
+        wrapper.style.cursor = "pointer";
+
+        // Add click handler to open modal
+        wrapper.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this._openModal();
+        });
+
         if (this.message !== undefined) {
             wrapper.innerText = this.message;
             // Style error messages with red text
@@ -182,7 +215,34 @@ Module.register("MMM-SugarValue", {
                     this.message = undefined;
                     this.isError = false;
                 }
-                this._updateDom();
+                // Defer DOM updates while modal is open
+                if (!this.isModalOpen) {
+                    this._updateDom();
+                }
+            }
+        }
+        if (notification === ModuleNotification.HISTORY_DATA) {
+            this.isLoadingHistory = false;
+
+            // Hide loading indicator
+            const loading = document.getElementById("sugar-loading");
+            if (loading) {
+                loading.classList.add("hidden");
+            }
+
+            const historyResponse = payload.historyResponse;
+            if (historyResponse && !historyResponse.error) {
+                this._renderChart(historyResponse.readings);
+            } else if (historyResponse && historyResponse.error) {
+                console.error("History fetch error:", historyResponse.error);
+                // Show error in chart area
+                const chartContainer = document.getElementById("sugar-history-chart");
+                if (chartContainer && chartContainer.parentElement) {
+                    const errorDiv = document.createElement("div");
+                    errorDiv.className = "sugar-chart-error";
+                    errorDiv.textContent = "Failed to load history data";
+                    chartContainer.parentElement.appendChild(errorDiv);
+                }
             }
         }
     },
@@ -202,6 +262,312 @@ Module.register("MMM-SugarValue", {
         const icon:HTMLSpanElement = document.createElement("span");
         icon.className = "fa fa-fw " + className;
         return icon;
+    },
+    _openModal(): void {
+        if (this.isModalOpen) return;
+
+        this.isModalOpen = true;
+        this.selectedTimeRange = 180;  // Default 3 hours
+
+        // Create and append modal to body (not module wrapper)
+        this.modalElement = this._createModalDom();
+        document.body.appendChild(this.modalElement);
+
+        // Request initial history data
+        this._requestHistoryData(this.selectedTimeRange);
+    },
+    _closeModal(): void {
+        if (!this.isModalOpen) return;
+
+        this.isModalOpen = false;
+
+        // Destroy chart instance to prevent memory leaks
+        if (this.chartInstance) {
+            this.chartInstance.destroy();
+            this.chartInstance = undefined;
+        }
+
+        // Remove modal from DOM
+        if (this.modalElement) {
+            document.body.removeChild(this.modalElement);
+            this.modalElement = undefined;
+        }
+
+        // Trigger DOM update in case new data arrived while modal was open
+        this._updateDom();
+    },
+    _createModalDom(): HTMLDivElement {
+        const self = this;
+
+        const overlay = document.createElement("div");
+        overlay.className = "sugar-modal-overlay";
+        overlay.id = "sugar-history-modal";
+
+        // Click outside to close
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) {
+                self._closeModal();
+            }
+        });
+
+        const modal = document.createElement("div");
+        modal.className = "sugar-modal";
+
+        // Header with title and close button
+        const header = document.createElement("div");
+        header.className = "sugar-modal-header";
+
+        const title = document.createElement("h3");
+        title.textContent = "Glucose History";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "sugar-modal-close";
+        closeBtn.innerHTML = "&times;";
+        closeBtn.addEventListener("click", () => self._closeModal());
+
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+
+        // Time range selector buttons
+        const timeSelector = document.createElement("div");
+        timeSelector.className = "sugar-time-selector";
+
+        const timeRanges = [
+            { label: "3h", minutes: 180 },
+            { label: "6h", minutes: 360 },
+            { label: "12h", minutes: 720 },
+            { label: "24h", minutes: 1440 }
+        ];
+
+        timeRanges.forEach(range => {
+            const btn = document.createElement("button");
+            btn.className = "sugar-time-btn";
+            btn.dataset.minutes = range.minutes.toString();
+            btn.textContent = range.label;
+            if (range.minutes === self.selectedTimeRange) {
+                btn.classList.add("active");
+            }
+            btn.addEventListener("click", () => {
+                self._requestHistoryData(range.minutes);
+            });
+            timeSelector.appendChild(btn);
+        });
+
+        // Chart container
+        const chartContainer = document.createElement("div");
+        chartContainer.className = "sugar-chart-container";
+
+        const canvas = document.createElement("canvas");
+        canvas.id = "sugar-history-chart";
+        chartContainer.appendChild(canvas);
+
+        // Loading indicator
+        const loading = document.createElement("div");
+        loading.className = "sugar-loading";
+        loading.id = "sugar-loading";
+        loading.textContent = "Loading...";
+        chartContainer.appendChild(loading);
+
+        // Footer with close button
+        const footer = document.createElement("div");
+        footer.className = "sugar-modal-footer";
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.className = "sugar-cancel-btn";
+        cancelBtn.textContent = "Close";
+        cancelBtn.addEventListener("click", () => self._closeModal());
+
+        footer.appendChild(cancelBtn);
+
+        modal.appendChild(header);
+        modal.appendChild(timeSelector);
+        modal.appendChild(chartContainer);
+        modal.appendChild(footer);
+        overlay.appendChild(modal);
+
+        return overlay;
+    },
+    _renderChart(readings: DexcomReading[]): void {
+        const canvas = document.getElementById("sugar-history-chart") as HTMLCanvasElement;
+        if (!canvas) return;
+
+        // Destroy existing chart if present
+        if (this.chartInstance) {
+            this.chartInstance.destroy();
+        }
+
+        // Sort readings by date (oldest first for chronological graph)
+        const sortedReadings = [...readings].sort((a, b) => {
+            const dateA = a.date ? a.date.getTime() : 0;
+            const dateB = b.date ? b.date.getTime() : 0;
+            return dateA - dateB;
+        });
+
+        // Prepare chart data
+        const labels = sortedReadings.map(r =>
+            r.date ? moment(r.date).format("HH:mm") : ""
+        );
+
+        const usesMg = this.config && this.config.units === "mg";
+        const data = sortedReadings.map(r => usesMg ? r.sugarMg : r.sugarMmol);
+        const unitLabel = usesMg ? "mg/dL" : "mmol/L";
+
+        // Determine y-axis range based on data and thresholds
+        const minValue = Math.min(...data);
+        const maxValue = Math.max(...data);
+        const lowLimit = this.config ? this.config.lowlimit : undefined;
+        const highLimit = this.config ? this.config.highlimit : undefined;
+
+        let suggestedMin = Math.floor(Math.min(minValue, lowLimit || minValue) * 0.9);
+        let suggestedMax = Math.ceil(Math.max(maxValue, highLimit || maxValue) * 1.1);
+
+        // Build threshold line annotations
+        const annotations: any = {};
+
+        if (lowLimit !== undefined) {
+            annotations.lowLine = {
+                type: 'line',
+                yMin: lowLimit,
+                yMax: lowLimit,
+                borderColor: '#dc3545',
+                borderWidth: 2,
+                borderDash: [5, 5]
+            };
+        }
+
+        if (highLimit !== undefined) {
+            annotations.highLine = {
+                type: 'line',
+                yMin: highLimit,
+                yMax: highLimit,
+                borderColor: '#ffc107',
+                borderWidth: 2,
+                borderDash: [5, 5]
+            };
+        }
+
+        // Build chart configuration
+        const chartConfig: any = {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: `Glucose (${unitLabel})`,
+                    data: data,
+                    borderColor: '#4fc3f7',
+                    backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    pointHoverRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context: any) => `${context.raw} ${unitLabel}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: '#aaa',
+                            maxTicksLimit: 8
+                        }
+                    },
+                    y: {
+                        suggestedMin: suggestedMin,
+                        suggestedMax: suggestedMax,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: '#aaa'
+                        }
+                    }
+                }
+            }
+        };
+
+        // Add threshold annotations if Chart.js annotation plugin is available
+        if (Object.keys(annotations).length > 0 && typeof Chart !== 'undefined') {
+            // Draw threshold lines using afterDraw hook since annotation plugin may not be loaded
+            chartConfig.plugins = [{
+                afterDraw: (chart: any) => {
+                    const ctx = chart.ctx;
+                    const yAxis = chart.scales.y;
+                    const xAxis = chart.scales.x;
+
+                    if (lowLimit !== undefined) {
+                        const yPos = yAxis.getPixelForValue(lowLimit);
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.setLineDash([5, 5]);
+                        ctx.strokeStyle = '#dc3545';
+                        ctx.lineWidth = 2;
+                        ctx.moveTo(xAxis.left, yPos);
+                        ctx.lineTo(xAxis.right, yPos);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+
+                    if (highLimit !== undefined) {
+                        const yPos = yAxis.getPixelForValue(highLimit);
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.setLineDash([5, 5]);
+                        ctx.strokeStyle = '#ffc107';
+                        ctx.lineWidth = 2;
+                        ctx.moveTo(xAxis.left, yPos);
+                        ctx.lineTo(xAxis.right, yPos);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            }];
+        }
+
+        // Create chart
+        this.chartInstance = new Chart(canvas, chartConfig);
+    },
+    _requestHistoryData(minutes: number): void {
+        this.selectedTimeRange = minutes;
+        this.isLoadingHistory = true;
+
+        // Update button states
+        this._updateTimeRangeButtons(minutes);
+
+        // Show loading indicator
+        const loading = document.getElementById("sugar-loading");
+        if (loading) {
+            loading.classList.remove("hidden");
+        }
+
+        // Send request to backend
+        this._sendSocketNotification(ModuleNotification.REQUEST_HISTORY, {
+            historyRequest: { minutes }
+        });
+    },
+    _updateTimeRangeButtons(minutes: number): void {
+        const buttons = document.querySelectorAll(".sugar-time-btn");
+        buttons.forEach(btn => {
+            const btnMinutes = parseInt((btn as HTMLButtonElement).dataset.minutes || "0");
+            if (btnMinutes === minutes) {
+                btn.classList.add("active");
+            } else {
+                btn.classList.remove("active");
+            }
+        });
     }
 });
 

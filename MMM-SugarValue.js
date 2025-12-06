@@ -20,6 +20,8 @@
         ModuleNotification["CONFIG"] = "CONFIG";
         ModuleNotification["DATA"] = "DATA";
         ModuleNotification["ALL_MODULES_STARTED"] = "ALL_MODULES_STARTED";
+        ModuleNotification["REQUEST_HISTORY"] = "REQUEST_HISTORY";
+        ModuleNotification["HISTORY_DATA"] = "HISTORY_DATA";
     })(ModuleNotification || (ModuleNotification = {}));
 
     var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
@@ -5721,13 +5723,29 @@
         getStyles: function () {
             return ['sugarvalue.css'];
         },
+        getScripts: function () {
+            return ["https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"];
+        },
         message: "Loading...",
         isError: false,
         reading: undefined,
         clockSpan: undefined,
+        // Modal state
+        isModalOpen: false,
+        modalElement: undefined,
+        chartInstance: undefined,
+        selectedTimeRange: 180,
+        isLoadingHistory: false,
         getDom: function () {
+            var _this = this;
             var wrapper = document.createElement("div");
             wrapper.className = "mmm-sugar-value";
+            wrapper.style.cursor = "pointer";
+            // Add click handler to open modal
+            wrapper.addEventListener("click", function (e) {
+                e.stopPropagation();
+                _this._openModal();
+            });
             if (this.message !== undefined) {
                 wrapper.innerText = this.message;
                 // Style error messages with red text
@@ -5859,7 +5877,33 @@
                         this.message = undefined;
                         this.isError = false;
                     }
-                    this._updateDom();
+                    // Defer DOM updates while modal is open
+                    if (!this.isModalOpen) {
+                        this._updateDom();
+                    }
+                }
+            }
+            if (notification === ModuleNotification.HISTORY_DATA) {
+                this.isLoadingHistory = false;
+                // Hide loading indicator
+                var loading = document.getElementById("sugar-loading");
+                if (loading) {
+                    loading.classList.add("hidden");
+                }
+                var historyResponse = payload.historyResponse;
+                if (historyResponse && !historyResponse.error) {
+                    this._renderChart(historyResponse.readings);
+                }
+                else if (historyResponse && historyResponse.error) {
+                    console.error("History fetch error:", historyResponse.error);
+                    // Show error in chart area
+                    var chartContainer = document.getElementById("sugar-history-chart");
+                    if (chartContainer && chartContainer.parentElement) {
+                        var errorDiv = document.createElement("div");
+                        errorDiv.className = "sugar-chart-error";
+                        errorDiv.textContent = "Failed to load history data";
+                        chartContainer.parentElement.appendChild(errorDiv);
+                    }
                 }
             }
         },
@@ -5880,6 +5924,274 @@
             var icon = document.createElement("span");
             icon.className = "fa fa-fw " + className;
             return icon;
+        },
+        _openModal: function () {
+            if (this.isModalOpen)
+                return;
+            this.isModalOpen = true;
+            this.selectedTimeRange = 180; // Default 3 hours
+            // Create and append modal to body (not module wrapper)
+            this.modalElement = this._createModalDom();
+            document.body.appendChild(this.modalElement);
+            // Request initial history data
+            this._requestHistoryData(this.selectedTimeRange);
+        },
+        _closeModal: function () {
+            if (!this.isModalOpen)
+                return;
+            this.isModalOpen = false;
+            // Destroy chart instance to prevent memory leaks
+            if (this.chartInstance) {
+                this.chartInstance.destroy();
+                this.chartInstance = undefined;
+            }
+            // Remove modal from DOM
+            if (this.modalElement) {
+                document.body.removeChild(this.modalElement);
+                this.modalElement = undefined;
+            }
+            // Trigger DOM update in case new data arrived while modal was open
+            this._updateDom();
+        },
+        _createModalDom: function () {
+            var self = this;
+            var overlay = document.createElement("div");
+            overlay.className = "sugar-modal-overlay";
+            overlay.id = "sugar-history-modal";
+            // Click outside to close
+            overlay.addEventListener("click", function (e) {
+                if (e.target === overlay) {
+                    self._closeModal();
+                }
+            });
+            var modal = document.createElement("div");
+            modal.className = "sugar-modal";
+            // Header with title and close button
+            var header = document.createElement("div");
+            header.className = "sugar-modal-header";
+            var title = document.createElement("h3");
+            title.textContent = "Glucose History";
+            var closeBtn = document.createElement("button");
+            closeBtn.className = "sugar-modal-close";
+            closeBtn.innerHTML = "&times;";
+            closeBtn.addEventListener("click", function () { return self._closeModal(); });
+            header.appendChild(title);
+            header.appendChild(closeBtn);
+            // Time range selector buttons
+            var timeSelector = document.createElement("div");
+            timeSelector.className = "sugar-time-selector";
+            var timeRanges = [
+                { label: "3h", minutes: 180 },
+                { label: "6h", minutes: 360 },
+                { label: "12h", minutes: 720 },
+                { label: "24h", minutes: 1440 }
+            ];
+            timeRanges.forEach(function (range) {
+                var btn = document.createElement("button");
+                btn.className = "sugar-time-btn";
+                btn.dataset.minutes = range.minutes.toString();
+                btn.textContent = range.label;
+                if (range.minutes === self.selectedTimeRange) {
+                    btn.classList.add("active");
+                }
+                btn.addEventListener("click", function () {
+                    self._requestHistoryData(range.minutes);
+                });
+                timeSelector.appendChild(btn);
+            });
+            // Chart container
+            var chartContainer = document.createElement("div");
+            chartContainer.className = "sugar-chart-container";
+            var canvas = document.createElement("canvas");
+            canvas.id = "sugar-history-chart";
+            chartContainer.appendChild(canvas);
+            // Loading indicator
+            var loading = document.createElement("div");
+            loading.className = "sugar-loading";
+            loading.id = "sugar-loading";
+            loading.textContent = "Loading...";
+            chartContainer.appendChild(loading);
+            // Footer with close button
+            var footer = document.createElement("div");
+            footer.className = "sugar-modal-footer";
+            var cancelBtn = document.createElement("button");
+            cancelBtn.className = "sugar-cancel-btn";
+            cancelBtn.textContent = "Close";
+            cancelBtn.addEventListener("click", function () { return self._closeModal(); });
+            footer.appendChild(cancelBtn);
+            modal.appendChild(header);
+            modal.appendChild(timeSelector);
+            modal.appendChild(chartContainer);
+            modal.appendChild(footer);
+            overlay.appendChild(modal);
+            return overlay;
+        },
+        _renderChart: function (readings) {
+            var canvas = document.getElementById("sugar-history-chart");
+            if (!canvas)
+                return;
+            // Destroy existing chart if present
+            if (this.chartInstance) {
+                this.chartInstance.destroy();
+            }
+            // Sort readings by date (oldest first for chronological graph)
+            var sortedReadings = readings.slice().sort(function (a, b) {
+                var dateA = a.date ? a.date.getTime() : 0;
+                var dateB = b.date ? b.date.getTime() : 0;
+                return dateA - dateB;
+            });
+            // Prepare chart data
+            var labels = sortedReadings.map(function (r) {
+                return r.date ? moment(r.date).format("HH:mm") : "";
+            });
+            var usesMg = this.config && this.config.units === "mg";
+            var data = sortedReadings.map(function (r) { return usesMg ? r.sugarMg : r.sugarMmol; });
+            var unitLabel = usesMg ? "mg/dL" : "mmol/L";
+            // Determine y-axis range based on data and thresholds
+            var minValue = Math.min.apply(Math, data);
+            var maxValue = Math.max.apply(Math, data);
+            var lowLimit = this.config ? this.config.lowlimit : undefined;
+            var highLimit = this.config ? this.config.highlimit : undefined;
+            var suggestedMin = Math.floor(Math.min(minValue, lowLimit || minValue) * 0.9);
+            var suggestedMax = Math.ceil(Math.max(maxValue, highLimit || maxValue) * 1.1);
+            // Build threshold line annotations
+            var annotations = {};
+            if (lowLimit !== undefined) {
+                annotations.lowLine = {
+                    type: 'line',
+                    yMin: lowLimit,
+                    yMax: lowLimit,
+                    borderColor: '#dc3545',
+                    borderWidth: 2,
+                    borderDash: [5, 5]
+                };
+            }
+            if (highLimit !== undefined) {
+                annotations.highLine = {
+                    type: 'line',
+                    yMin: highLimit,
+                    yMax: highLimit,
+                    borderColor: '#ffc107',
+                    borderWidth: 2,
+                    borderDash: [5, 5]
+                };
+            }
+            // Build chart configuration
+            var chartConfig = {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                            label: "Glucose (" + unitLabel + ")",
+                            data: data,
+                            borderColor: '#4fc3f7',
+                            backgroundColor: 'rgba(79, 195, 247, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 2,
+                            pointHoverRadius: 5
+                        }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) { return context.raw + " " + unitLabel; }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#aaa',
+                                maxTicksLimit: 8
+                            }
+                        },
+                        y: {
+                            suggestedMin: suggestedMin,
+                            suggestedMax: suggestedMax,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#aaa'
+                            }
+                        }
+                    }
+                }
+            };
+            // Add threshold annotations if Chart.js annotation plugin is available
+            if (Object.keys(annotations).length > 0 && typeof Chart !== 'undefined') {
+                // Draw threshold lines using afterDraw hook since annotation plugin may not be loaded
+                chartConfig.plugins = [{
+                        afterDraw: function (chart) {
+                            var ctx = chart.ctx;
+                            var yAxis = chart.scales.y;
+                            var xAxis = chart.scales.x;
+                            if (lowLimit !== undefined) {
+                                var yPos = yAxis.getPixelForValue(lowLimit);
+                                ctx.save();
+                                ctx.beginPath();
+                                ctx.setLineDash([5, 5]);
+                                ctx.strokeStyle = '#dc3545';
+                                ctx.lineWidth = 2;
+                                ctx.moveTo(xAxis.left, yPos);
+                                ctx.lineTo(xAxis.right, yPos);
+                                ctx.stroke();
+                                ctx.restore();
+                            }
+                            if (highLimit !== undefined) {
+                                var yPos = yAxis.getPixelForValue(highLimit);
+                                ctx.save();
+                                ctx.beginPath();
+                                ctx.setLineDash([5, 5]);
+                                ctx.strokeStyle = '#ffc107';
+                                ctx.lineWidth = 2;
+                                ctx.moveTo(xAxis.left, yPos);
+                                ctx.lineTo(xAxis.right, yPos);
+                                ctx.stroke();
+                                ctx.restore();
+                            }
+                        }
+                    }];
+            }
+            // Create chart
+            this.chartInstance = new Chart(canvas, chartConfig);
+        },
+        _requestHistoryData: function (minutes) {
+            this.selectedTimeRange = minutes;
+            this.isLoadingHistory = true;
+            // Update button states
+            this._updateTimeRangeButtons(minutes);
+            // Show loading indicator
+            var loading = document.getElementById("sugar-loading");
+            if (loading) {
+                loading.classList.remove("hidden");
+            }
+            // Send request to backend
+            this._sendSocketNotification(ModuleNotification.REQUEST_HISTORY, {
+                historyRequest: { minutes: minutes }
+            });
+        },
+        _updateTimeRangeButtons: function (minutes) {
+            var buttons = document.querySelectorAll(".sugar-time-btn");
+            buttons.forEach(function (btn) {
+                var btnMinutes = parseInt(btn.dataset.minutes || "0");
+                if (btnMinutes === minutes) {
+                    btn.classList.add("active");
+                }
+                else {
+                    btn.classList.remove("active");
+                }
+            });
         }
     });
 

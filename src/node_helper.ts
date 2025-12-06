@@ -13,22 +13,30 @@ interface MagicMirrorNodeHelperApi {
 }
 
 interface ModuleNodeHelper extends MagicMirrorNodeHelperApi {
+    api: DexcomApi | undefined;
     fetchData(api: DexcomApi, updateSecs: number): void;
     fetchDataWithRetry(api: DexcomApi, callback: (response: DexcomApiResponse) => void, maxRetries: number, attempt: number): void;
+    fetchHistoryData(minutes: number): void;
     _sendSocketNotification(notification: ModuleNotification, payload: NotificationPayload): void;
 }
 
 module.exports = NodeHelper.create({
+    api: undefined as DexcomApi | undefined,
     socketNotificationReceived(notification: ModuleNotification, payload: NotificationPayload) {
         switch (notification) {
             case ModuleNotification.CONFIG:
                 const config: Config | undefined = payload.config;
                 if (config !== undefined) {
-                    const api: DexcomApi = DexcomApiFactory(config.serverUrl, config.username, config.password);
+                    this.api = DexcomApiFactory(config.serverUrl, config.username, config.password);
 
                     setTimeout(() => {
-                        this.fetchData(api, config.updateSecs);
+                        this.fetchData(this.api!, config.updateSecs);
                     }, 500);
+                }
+                break;
+            case ModuleNotification.REQUEST_HISTORY:
+                if (this.api && payload.historyRequest) {
+                    this.fetchHistoryData(payload.historyRequest.minutes);
                 }
                 break;
         }
@@ -101,6 +109,18 @@ module.exports = NodeHelper.create({
                 callback(response);
             }
         }, 1);
+    },
+    fetchHistoryData(minutes: number): void {
+        if (!this.api) return;
+
+        // Calculate maxCount: ~1 reading per 5 minutes
+        const maxCount = Math.ceil(minutes / 5) + 1;
+
+        this.api.fetchDataCached((response: DexcomApiResponse) => {
+            this._sendSocketNotification(ModuleNotification.HISTORY_DATA, {
+                historyResponse: response
+            });
+        }, maxCount, minutes);
     },
     _sendSocketNotification(notification: ModuleNotification, payload: NotificationPayload): void {
         console.log("Sending", notification, payload);
