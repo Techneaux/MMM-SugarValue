@@ -5859,7 +5859,6 @@
             }
         },
         socketNotificationReceived: function (notification, payload) {
-            console.log(notification, payload);
             if (notification === ModuleNotification.DATA) {
                 var apiResponse = payload.apiResponse;
                 if (apiResponse !== undefined) {
@@ -6045,14 +6044,15 @@
                 this.chartInstance.destroy();
             }
             // Sort readings by date (oldest first for chronological graph)
+            // Note: dates may be strings after JSON serialization through socket
             var sortedReadings = readings.slice().sort(function (a, b) {
-                var dateA = a.date ? a.date.getTime() : 0;
-                var dateB = b.date ? b.date.getTime() : 0;
+                var dateA = a.date ? new Date(a.date).getTime() : 0;
+                var dateB = b.date ? new Date(b.date).getTime() : 0;
                 return dateA - dateB;
             });
             // Prepare chart data
             var labels = sortedReadings.map(function (r) {
-                return r.date ? moment(r.date).format("HH:mm") : "";
+                return r.date ? moment(new Date(r.date)).format("HH:mm") : "";
             });
             var usesMg = this.config && this.config.units === "mg";
             var data = sortedReadings.map(function (r) { return usesMg ? r.sugarMg : r.sugarMmol; });
