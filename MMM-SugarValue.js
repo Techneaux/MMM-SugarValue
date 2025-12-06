@@ -5724,11 +5724,7 @@
             return ['sugarvalue.css'];
         },
         getScripts: function () {
-            return [{
-                    src: "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
-                    integrity: "sha384-+lGqOR/mdrIW6DCeU44yWiNysGEKMluSleqrs9jwELyhl725LLJoPLD114F8CbnZ",
-                    crossorigin: "anonymous"
-                }];
+            return ["https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"];
         },
         message: "Loading...",
         isError: false,
