@@ -62,7 +62,10 @@ Module.register("MMM-SugarValue", {
         return[ 'sugarvalue.css' ]
     },
     getScripts(): string[] {
-        return ["https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"];
+        return [
+            "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
+            "https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"
+        ];
     },
     message: "Loading...",
     isError: false,
@@ -380,21 +383,9 @@ Module.register("MMM-SugarValue", {
         loading.textContent = "Loading...";
         chartContainer.appendChild(loading);
 
-        // Footer with close button
-        const footer = document.createElement("div");
-        footer.className = "sugar-modal-footer";
-
-        const cancelBtn = document.createElement("button");
-        cancelBtn.className = "sugar-cancel-btn";
-        cancelBtn.textContent = "Close";
-        cancelBtn.addEventListener("click", () => self._closeModal());
-
-        footer.appendChild(cancelBtn);
-
         modal.appendChild(header);
         modal.appendChild(timeSelector);
         modal.appendChild(chartContainer);
-        modal.appendChild(footer);
         overlay.appendChild(modal);
 
         return overlay;
@@ -416,9 +407,9 @@ Module.register("MMM-SugarValue", {
             return dateA - dateB;
         });
 
-        // Prepare chart data
+        // Prepare chart data - use Date objects for time scale
         const labels = sortedReadings.map(r =>
-            r.date ? moment(new Date(r.date as any)).format("HH:mm") : ""
+            r.date ? new Date(r.date as any) : new Date()
         );
 
         const usesMg = this.config && this.config.units === "mg";
@@ -485,11 +476,11 @@ Module.register("MMM-SugarValue", {
                     label: `Glucose (${unitLabel})`,
                     data: data,
                     borderColor: '#4fc3f7',
-                    backgroundColor: 'rgba(79, 195, 247, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 2,
-                    pointHoverRadius: 5
+                    backgroundColor: '#4fc3f7',
+                    fill: false,
+                    showLine: false,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
                 }]
             },
             options: {
@@ -503,21 +494,32 @@ Module.register("MMM-SugarValue", {
                         callbacks: {
                             label: (context: any) => `${context.raw} ${unitLabel}`
                         }
+                    },
+                    datalabels: {
+                        display: false
                     }
                 },
                 scales: {
                     x: {
+                        type: 'time',
+                        time: {
+                            unit: 'hour',
+                            displayFormats: {
+                                hour: 'h a'
+                            }
+                        },
                         grid: {
                             color: 'rgba(255, 255, 255, 0.1)'
                         },
                         ticks: {
-                            color: '#aaa',
-                            maxTicksLimit: 8
+                            color: '#aaa'
                         }
                     },
                     y: {
+                        position: 'right',
                         suggestedMin: suggestedMin,
-                        suggestedMax: suggestedMax,
+                        max: usesMg ? 400 : undefined,
+                        suggestedMax: usesMg ? undefined : suggestedMax,
                         grid: {
                             color: 'rgba(255, 255, 255, 0.1)'
                         },
