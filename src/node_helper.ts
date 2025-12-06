@@ -128,7 +128,6 @@ module.exports = NodeHelper.create({
         }, maxCount, minutes);
     },
     _sendSocketNotification(notification: ModuleNotification, payload: NotificationPayload): void {
-        console.log("Sending", notification, payload);
         if (this.sendSocketNotification !== undefined) {
             this.sendSocketNotification(notification, payload);
         } else {

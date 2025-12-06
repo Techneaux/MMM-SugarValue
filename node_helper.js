@@ -376,7 +376,6 @@
             }, maxCount, minutes);
         },
         _sendSocketNotification: function (notification, payload) {
-            console.log("Sending", notification, payload);
             if (this.sendSocketNotification !== undefined) {
                 this.sendSocketNotification(notification, payload);
             }

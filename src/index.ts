@@ -199,7 +199,6 @@ Module.register("MMM-SugarValue", {
         }
     },
     socketNotificationReceived(notification: ModuleNotification, payload: NotificationPayload): void {
-        console.log(notification, payload);
         if (notification === ModuleNotification.DATA) {
             const apiResponse: DexcomApiResponse | undefined = payload.apiResponse;
             if (apiResponse !== undefined) {
@@ -410,15 +409,16 @@ Module.register("MMM-SugarValue", {
         }
 
         // Sort readings by date (oldest first for chronological graph)
+        // Note: dates may be strings after JSON serialization through socket
         const sortedReadings = [...readings].sort((a, b) => {
-            const dateA = a.date ? a.date.getTime() : 0;
-            const dateB = b.date ? b.date.getTime() : 0;
+            const dateA = a.date ? new Date(a.date as any).getTime() : 0;
+            const dateB = b.date ? new Date(b.date as any).getTime() : 0;
             return dateA - dateB;
         });
 
         // Prepare chart data
         const labels = sortedReadings.map(r =>
-            r.date ? moment(r.date).format("HH:mm") : ""
+            r.date ? moment(new Date(r.date as any)).format("HH:mm") : ""
         );
 
         const usesMg = this.config && this.config.units === "mg";
