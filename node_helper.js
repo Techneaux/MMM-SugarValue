@@ -277,13 +277,18 @@
                     if (config_1 !== undefined) {
                         this.api = DexcomApiFactory(config_1.serverUrl, config_1.username, config_1.password);
                         setTimeout(function () {
-                            _this.fetchData(_this.api, config_1.updateSecs);
+                            if (_this.api) {
+                                _this.fetchData(_this.api, config_1.updateSecs);
+                            }
+                            else {
+                                console.error("API not initialized");
+                            }
                         }, 500);
                     }
                     break;
                 case ModuleNotification.REQUEST_HISTORY:
                     if (this.api && payload.historyRequest) {
-                        this.fetchHistoryData(payload.historyRequest.minutes);
+                        this.fetchHistoryData(payload.historyRequest.minutes, payload.historyRequest.requestId);
                     }
                     break;
             }
@@ -357,7 +362,7 @@
                 }
             }, 1);
         },
-        fetchHistoryData: function (minutes) {
+        fetchHistoryData: function (minutes, requestId) {
             var _this = this;
             if (!this.api)
                 return;
@@ -365,7 +370,8 @@
             var maxCount = Math.ceil(minutes / 5) + 1;
             this.api.fetchDataCached(function (response) {
                 _this._sendSocketNotification(ModuleNotification.HISTORY_DATA, {
-                    historyResponse: response
+                    historyResponse: response,
+                    historyRequest: { minutes: minutes, requestId: requestId }
                 });
             }, maxCount, minutes);
         },

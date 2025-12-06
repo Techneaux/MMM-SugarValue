@@ -5724,7 +5724,11 @@
             return ['sugarvalue.css'];
         },
         getScripts: function () {
-            return ["https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"];
+            return [{
+                    src: "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
+                    integrity: "sha384-+lGqOR/mdrIW6DCeU44yWiNysGEKMluSleqrs9jwELyhl725LLJoPLD114F8CbnZ",
+                    crossorigin: "anonymous"
+                }];
         },
         message: "Loading...",
         isError: false,
@@ -5736,11 +5740,11 @@
         chartInstance: undefined,
         selectedTimeRange: 180,
         isLoadingHistory: false,
+        historyRequestId: 0,
         getDom: function () {
             var _this = this;
             var wrapper = document.createElement("div");
             wrapper.className = "mmm-sugar-value";
-            wrapper.style.cursor = "pointer";
             // Add click handler to open modal
             wrapper.addEventListener("click", function (e) {
                 e.stopPropagation();
@@ -5884,6 +5888,11 @@
                 }
             }
             if (notification === ModuleNotification.HISTORY_DATA) {
+                // Ignore outdated responses (race condition prevention)
+                var requestId = payload.historyRequest ? payload.historyRequest.requestId : undefined;
+                if (requestId !== undefined && requestId !== this.historyRequestId) {
+                    return; // Ignore outdated response
+                }
                 this.isLoadingHistory = false;
                 // Hide loading indicator
                 var loading = document.getElementById("sugar-loading");
@@ -5899,6 +5908,11 @@
                     // Show error in chart area
                     var chartContainer = document.getElementById("sugar-history-chart");
                     if (chartContainer && chartContainer.parentElement) {
+                        // Remove any existing error messages first
+                        var existingError = chartContainer.parentElement.querySelector('.sugar-chart-error');
+                        if (existingError) {
+                            existingError.remove();
+                        }
                         var errorDiv = document.createElement("div");
                         errorDiv.className = "sugar-chart-error";
                         errorDiv.textContent = "Failed to load history data";
@@ -5973,7 +5987,7 @@
             title.textContent = "Glucose History";
             var closeBtn = document.createElement("button");
             closeBtn.className = "sugar-modal-close";
-            closeBtn.innerHTML = "&times;";
+            closeBtn.textContent = "×";
             closeBtn.addEventListener("click", function () { return self._closeModal(); });
             header.appendChild(title);
             header.appendChild(closeBtn);
@@ -6047,6 +6061,22 @@
             var usesMg = this.config && this.config.units === "mg";
             var data = sortedReadings.map(function (r) { return usesMg ? r.sugarMg : r.sugarMmol; });
             var unitLabel = usesMg ? "mg/dL" : "mmol/L";
+            // Handle empty data case
+            if (data.length === 0) {
+                var chartContainer = document.getElementById("sugar-history-chart");
+                if (chartContainer && chartContainer.parentElement) {
+                    // Remove any existing error messages first
+                    var existingError = chartContainer.parentElement.querySelector('.sugar-chart-error');
+                    if (existingError) {
+                        existingError.remove();
+                    }
+                    var noDataDiv = document.createElement("div");
+                    noDataDiv.className = "sugar-chart-error";
+                    noDataDiv.textContent = "No data available for this time range";
+                    chartContainer.parentElement.appendChild(noDataDiv);
+                }
+                return;
+            }
             // Determine y-axis range based on data and thresholds
             var minValue = Math.min.apply(Math, data);
             var maxValue = Math.max.apply(Math, data);
@@ -6169,6 +6199,7 @@
         _requestHistoryData: function (minutes) {
             this.selectedTimeRange = minutes;
             this.isLoadingHistory = true;
+            this.historyRequestId = Date.now();
             // Update button states
             this._updateTimeRangeButtons(minutes);
             // Show loading indicator
@@ -6178,7 +6209,7 @@
             }
             // Send request to backend
             this._sendSocketNotification(ModuleNotification.REQUEST_HISTORY, {
-                historyRequest: { minutes: minutes }
+                historyRequest: { minutes: minutes, requestId: this.historyRequestId }
             });
         },
         _updateTimeRangeButtons: function (minutes) {

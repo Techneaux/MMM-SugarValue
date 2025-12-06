@@ -3,6 +3,7 @@ import { DexcomApiResponse } from "./dexcom";
 
 export interface HistoryRequest {
     minutes: number;  // 180, 360, 720, 1440
+    requestId: number;  // Unique ID to track request/response matching
 }
 
 export interface NotificationPayload {

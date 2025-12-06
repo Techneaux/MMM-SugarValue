@@ -28,9 +28,10 @@ interface MagicMirrorOptions extends MagicMirrorApi {
     chartInstance: any;
     selectedTimeRange: number;
     isLoadingHistory: boolean;
+    historyRequestId: number;
 
     getDom: () => HTMLDivElement;
-    getScripts: () => string[];
+    getScripts: () => any[];
     start: () => void;
     _sendSocketNotification(notification: string, payload: NotificationPayload): void;
     _updateDom(): void;
@@ -60,8 +61,12 @@ Module.register("MMM-SugarValue", {
     getStyles(): string[] {
         return[ 'sugarvalue.css' ]
     },
-    getScripts(): string[] {
-        return ["https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"];
+    getScripts(): any[] {
+        return [{
+            src: "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
+            integrity: "sha384-+lGqOR/mdrIW6DCeU44yWiNysGEKMluSleqrs9jwELyhl725LLJoPLD114F8CbnZ",
+            crossorigin: "anonymous"
+        }];
     },
     message: "Loading...",
     isError: false,
@@ -73,10 +78,10 @@ Module.register("MMM-SugarValue", {
     chartInstance: undefined,
     selectedTimeRange: 180,
     isLoadingHistory: false,
+    historyRequestId: 0,
     getDom(): HTMLDivElement {
         const wrapper: HTMLDivElement = document.createElement("div");
         wrapper.className = "mmm-sugar-value";
-        wrapper.style.cursor = "pointer";
 
         // Add click handler to open modal
         wrapper.addEventListener("click", (e) => {
@@ -222,6 +227,12 @@ Module.register("MMM-SugarValue", {
             }
         }
         if (notification === ModuleNotification.HISTORY_DATA) {
+            // Ignore outdated responses (race condition prevention)
+            const requestId = payload.historyRequest ? payload.historyRequest.requestId : undefined;
+            if (requestId !== undefined && requestId !== this.historyRequestId) {
+                return; // Ignore outdated response
+            }
+
             this.isLoadingHistory = false;
 
             // Hide loading indicator
@@ -238,6 +249,12 @@ Module.register("MMM-SugarValue", {
                 // Show error in chart area
                 const chartContainer = document.getElementById("sugar-history-chart");
                 if (chartContainer && chartContainer.parentElement) {
+                    // Remove any existing error messages first
+                    const existingError = chartContainer.parentElement.querySelector('.sugar-chart-error');
+                    if (existingError) {
+                        existingError.remove();
+                    }
+
                     const errorDiv = document.createElement("div");
                     errorDiv.className = "sugar-chart-error";
                     errorDiv.textContent = "Failed to load history data";
@@ -322,7 +339,7 @@ Module.register("MMM-SugarValue", {
 
         const closeBtn = document.createElement("button");
         closeBtn.className = "sugar-modal-close";
-        closeBtn.innerHTML = "&times;";
+        closeBtn.textContent = "×";
         closeBtn.addEventListener("click", () => self._closeModal());
 
         header.appendChild(title);
@@ -411,6 +428,23 @@ Module.register("MMM-SugarValue", {
         const usesMg = this.config && this.config.units === "mg";
         const data = sortedReadings.map(r => usesMg ? r.sugarMg : r.sugarMmol);
         const unitLabel = usesMg ? "mg/dL" : "mmol/L";
+
+        // Handle empty data case
+        if (data.length === 0) {
+            const chartContainer = document.getElementById("sugar-history-chart");
+            if (chartContainer && chartContainer.parentElement) {
+                // Remove any existing error messages first
+                const existingError = chartContainer.parentElement.querySelector('.sugar-chart-error');
+                if (existingError) {
+                    existingError.remove();
+                }
+                const noDataDiv = document.createElement("div");
+                noDataDiv.className = "sugar-chart-error";
+                noDataDiv.textContent = "No data available for this time range";
+                chartContainer.parentElement.appendChild(noDataDiv);
+            }
+            return;
+        }
 
         // Determine y-axis range based on data and thresholds
         const minValue = Math.min(...data);
@@ -543,6 +577,7 @@ Module.register("MMM-SugarValue", {
     _requestHistoryData(minutes: number): void {
         this.selectedTimeRange = minutes;
         this.isLoadingHistory = true;
+        this.historyRequestId = Date.now();
 
         // Update button states
         this._updateTimeRangeButtons(minutes);
@@ -555,7 +590,7 @@ Module.register("MMM-SugarValue", {
 
         // Send request to backend
         this._sendSocketNotification(ModuleNotification.REQUEST_HISTORY, {
-            historyRequest: { minutes }
+            historyRequest: { minutes, requestId: this.historyRequestId }
         });
     },
     _updateTimeRangeButtons(minutes: number): void {

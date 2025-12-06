@@ -16,7 +16,7 @@ interface ModuleNodeHelper extends MagicMirrorNodeHelperApi {
     api: DexcomApi | undefined;
     fetchData(api: DexcomApi, updateSecs: number): void;
     fetchDataWithRetry(api: DexcomApi, callback: (response: DexcomApiResponse) => void, maxRetries: number, attempt: number): void;
-    fetchHistoryData(minutes: number): void;
+    fetchHistoryData(minutes: number, requestId: number): void;
     _sendSocketNotification(notification: ModuleNotification, payload: NotificationPayload): void;
 }
 
@@ -30,13 +30,17 @@ module.exports = NodeHelper.create({
                     this.api = DexcomApiFactory(config.serverUrl, config.username, config.password);
 
                     setTimeout(() => {
-                        this.fetchData(this.api!, config.updateSecs);
+                        if (this.api) {
+                            this.fetchData(this.api, config.updateSecs);
+                        } else {
+                            console.error("API not initialized");
+                        }
                     }, 500);
                 }
                 break;
             case ModuleNotification.REQUEST_HISTORY:
                 if (this.api && payload.historyRequest) {
-                    this.fetchHistoryData(payload.historyRequest.minutes);
+                    this.fetchHistoryData(payload.historyRequest.minutes, payload.historyRequest.requestId);
                 }
                 break;
         }
@@ -110,7 +114,7 @@ module.exports = NodeHelper.create({
             }
         }, 1);
     },
-    fetchHistoryData(minutes: number): void {
+    fetchHistoryData(minutes: number, requestId: number): void {
         if (!this.api) return;
 
         // Calculate maxCount: ~1 reading per 5 minutes
@@ -118,7 +122,8 @@ module.exports = NodeHelper.create({
 
         this.api.fetchDataCached((response: DexcomApiResponse) => {
             this._sendSocketNotification(ModuleNotification.HISTORY_DATA, {
-                historyResponse: response
+                historyResponse: response,
+                historyRequest: { minutes, requestId }
             });
         }, maxCount, minutes);
     },
