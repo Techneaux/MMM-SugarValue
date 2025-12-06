@@ -12,3 +12,161 @@
 .text-success {
     color: #28a745 !important;
 }
+
+/* Modal Overlay */
+.sugar-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sugar-modal-overlay.hidden {
+    display: none;
+}
+
+/* Modal Container */
+.sugar-modal {
+    background-color: #1a1a1a;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Modal Header */
+.sugar-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid #333;
+}
+
+.sugar-modal-header h3 {
+    margin: 0;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 400;
+}
+
+.sugar-modal-close {
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.sugar-modal-close:hover {
+    color: #fff;
+}
+
+/* Time Range Selector */
+.sugar-time-selector {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 15px;
+    border-bottom: 1px solid #333;
+}
+
+.sugar-time-btn {
+    background-color: #333;
+    border: none;
+    color: #aaa;
+    padding: 8px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.sugar-time-btn:hover {
+    background-color: #444;
+    color: #fff;
+}
+
+.sugar-time-btn.active {
+    background-color: #4fc3f7;
+    color: #000;
+}
+
+/* Chart Container */
+.sugar-chart-container {
+    position: relative;
+    padding: 20px;
+    height: 350px;
+}
+
+#sugar-history-chart {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Loading Indicator */
+.sugar-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #aaa;
+    font-size: 16px;
+}
+
+.sugar-loading.hidden {
+    display: none;
+}
+
+/* Chart Error */
+.sugar-chart-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #dc3545;
+    font-size: 14px;
+}
+
+/* Modal Footer */
+.sugar-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 15px 20px;
+    border-top: 1px solid #333;
+}
+
+.sugar-cancel-btn {
+    background-color: #444;
+    border: none;
+    color: #fff;
+    padding: 10px 25px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+}
+
+.sugar-cancel-btn:hover {
+    background-color: #555;
+}
+
+/* Clickable module wrapper */
+.mmm-sugar-value {
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+
+.mmm-sugar-value:hover {
+    opacity: 0.8;
+}
