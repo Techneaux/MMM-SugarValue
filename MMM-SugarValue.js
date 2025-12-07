@@ -6074,15 +6074,9 @@
             var startHour = minTime - padding;
             // Ensure at least 1 hour range to prevent zero-width axis
             var endHour = Math.max(startHour + 3600000, maxTime + padding);
-            // Extract y values for min/max calculation
-            var data = chartData.map(function (d) { return d.y; });
-            // Determine y-axis range based on data and thresholds
-            var minValue = Math.min.apply(Math, data);
-            var maxValue = Math.max.apply(Math, data);
+            // Get threshold limits for annotations
             var lowLimit = this.config ? this.config.lowlimit : undefined;
             var highLimit = this.config ? this.config.highlimit : undefined;
-            var suggestedMin = Math.floor(Math.min(minValue, lowLimit || minValue) * 0.9);
-            var suggestedMax = Math.ceil(Math.max(maxValue, highLimit || maxValue) * 1.1);
             // Build threshold line annotations
             var annotations = {};
             if (lowLimit !== undefined) {
@@ -6152,13 +6146,22 @@
                         },
                         y: {
                             position: 'right',
-                            suggestedMin: suggestedMin,
-                            suggestedMax: usesMg ? 400 : suggestedMax,
+                            min: usesMg ? 25 : 1.4,
+                            max: usesMg ? 425 : 23.6,
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
                             },
                             ticks: {
-                                color: '#aaa'
+                                color: '#aaa',
+                                stepSize: usesMg ? 100 : 5,
+                                callback: function (value) {
+                                    if (usesMg) {
+                                        return value >= 100 && value <= 400 && value % 100 === 0 ? value : '';
+                                    }
+                                    else {
+                                        return value >= 5 && value <= 20 && value % 5 === 0 ? value : '';
+                                    }
+                                }
                             }
                         }
                     }
