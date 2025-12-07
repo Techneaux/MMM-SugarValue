@@ -501,12 +501,19 @@ Module.register("MMM-SugarValue", {
                         min: minTime,
                         max: maxTime,
                         afterBuildTicks: function(axis: any) {
-                            // Filter ticks to only show exact hour boundaries within the data range
-                            axis.ticks = axis.ticks.filter((tick: any) => {
-                                const isHourBoundary = new Date(tick.value).getMinutes() === 0;
-                                const isWithinRange = tick.value >= minTime && tick.value <= maxTime;
-                                return isHourBoundary && isWithinRange;
-                            });
+                            // Generate ticks at local clock hour boundaries within the data range
+                            const d = new Date(minTime);
+                            d.setMinutes(0, 0, 0); // Round down to start of current hour
+                            if (d.getTime() < minTime) {
+                                d.setHours(d.getHours() + 1); // Round up to next hour
+                            }
+                            const firstHour = d.getTime();
+
+                            const ticks = [];
+                            for (let t = firstHour; t <= maxTime; t += 3600000) {
+                                ticks.push({ value: t });
+                            }
+                            axis.ticks = ticks;
                         },
                         grid: {
                             color: 'rgba(255, 255, 255, 0.1)'

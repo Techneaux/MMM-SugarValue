@@ -6109,12 +6109,18 @@
                             min: minTime,
                             max: maxTime,
                             afterBuildTicks: function (axis) {
-                                // Filter ticks to only show exact hour boundaries within the data range
-                                axis.ticks = axis.ticks.filter(function (tick) {
-                                    var isHourBoundary = new Date(tick.value).getMinutes() === 0;
-                                    var isWithinRange = tick.value >= minTime && tick.value <= maxTime;
-                                    return isHourBoundary && isWithinRange;
-                                });
+                                // Generate ticks at local clock hour boundaries within the data range
+                                var d = new Date(minTime);
+                                d.setMinutes(0, 0, 0); // Round down to start of current hour
+                                if (d.getTime() < minTime) {
+                                    d.setHours(d.getHours() + 1); // Round up to next hour
+                                }
+                                var firstHour = d.getTime();
+                                var ticks = [];
+                                for (var t = firstHour; t <= maxTime; t += 3600000) {
+                                    ticks.push({ value: t });
+                                }
+                                axis.ticks = ticks;
                             },
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
