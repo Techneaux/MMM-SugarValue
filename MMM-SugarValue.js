@@ -5725,9 +5725,7 @@
         },
         getScripts: function () {
             return [
-                "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
-                "https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js",
-                "https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"
+                "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
             ];
         },
         message: "Loading...",
@@ -6045,12 +6043,20 @@
                 var dateB = b.date ? new Date(b.date).getTime() : 0;
                 return dateA - dateB;
             });
-            // Prepare chart data - use Date objects for time scale
-            var labels = sortedReadings.map(function (r) {
-                return r.date ? new Date(r.date) : new Date();
-            });
             var usesMg = this.config && this.config.units === "mg";
-            var data = sortedReadings.map(function (r) { return usesMg ? r.sugarMg : r.sugarMmol; });
+            // Prepare chart data as {x: timestamp, y: value} for linear time scale
+            var chartData = sortedReadings.map(function (r) { return ({
+                x: r.date ? new Date(r.date).getTime() : Date.now(),
+                y: usesMg ? r.sugarMg : r.sugarMmol
+            }); });
+            // Calculate hour boundaries for x-axis
+            var timestamps = chartData.map(function (d) { return d.x; });
+            var minTime = Math.min.apply(Math, timestamps);
+            var maxTime = Math.max.apply(Math, timestamps);
+            var startHour = Math.floor(minTime / 3600000) * 3600000; // Round down to hour
+            var endHour = Math.ceil(maxTime / 3600000) * 3600000; // Round up to hour
+            // Extract y values for min/max calculation
+            var data = chartData.map(function (d) { return d.y; });
             var unitLabel = usesMg ? "mg/dL" : "mmol/L";
             // Handle empty data case
             if (data.length === 0) {
@@ -6101,10 +6107,9 @@
             var chartConfig = {
                 type: 'line',
                 data: {
-                    labels: labels,
                     datasets: [{
                             label: "Glucose (" + unitLabel + ")",
-                            data: data,
+                            data: chartData,
                             borderColor: '#4fc3f7',
                             backgroundColor: '#4fc3f7',
                             fill: false,
@@ -6122,7 +6127,7 @@
                         },
                         tooltip: {
                             callbacks: {
-                                label: function (context) { return context.raw + " " + unitLabel; }
+                                label: function (context) { return context.parsed.y + " " + unitLabel; }
                             }
                         },
                         datalabels: {
@@ -6131,18 +6136,18 @@
                     },
                     scales: {
                         x: {
-                            type: 'time',
-                            time: {
-                                unit: 'hour',
-                                displayFormats: {
-                                    hour: 'h a'
-                                }
-                            },
+                            type: 'linear',
+                            min: startHour,
+                            max: endHour,
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
                             },
                             ticks: {
-                                color: '#aaa'
+                                color: '#aaa',
+                                stepSize: 3600000,
+                                callback: function (value) {
+                                    return moment(value).format("h A");
+                                }
                             }
                         },
                         y: {

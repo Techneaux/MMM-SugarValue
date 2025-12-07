@@ -63,9 +63,7 @@ Module.register("MMM-SugarValue", {
     },
     getScripts(): string[] {
         return [
-            "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
-            "https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js",
-            "https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"
+            "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
         ];
     },
     message: "Loading...",
@@ -407,13 +405,23 @@ Module.register("MMM-SugarValue", {
             return dateA - dateB;
         });
 
-        // Prepare chart data - use Date objects for time scale
-        const labels = sortedReadings.map(r =>
-            r.date ? new Date(r.date as any) : new Date()
-        );
-
         const usesMg = this.config && this.config.units === "mg";
-        const data = sortedReadings.map(r => usesMg ? r.sugarMg : r.sugarMmol);
+
+        // Prepare chart data as {x: timestamp, y: value} for linear time scale
+        const chartData = sortedReadings.map(r => ({
+            x: r.date ? new Date(r.date as any).getTime() : Date.now(),
+            y: usesMg ? r.sugarMg : r.sugarMmol
+        }));
+
+        // Calculate hour boundaries for x-axis
+        const timestamps = chartData.map(d => d.x);
+        const minTime = Math.min(...timestamps);
+        const maxTime = Math.max(...timestamps);
+        const startHour = Math.floor(minTime / 3600000) * 3600000; // Round down to hour
+        const endHour = Math.ceil(maxTime / 3600000) * 3600000;    // Round up to hour
+
+        // Extract y values for min/max calculation
+        const data = chartData.map(d => d.y);
         const unitLabel = usesMg ? "mg/dL" : "mmol/L";
 
         // Handle empty data case
@@ -471,10 +479,9 @@ Module.register("MMM-SugarValue", {
         const chartConfig: any = {
             type: 'line',
             data: {
-                labels: labels,
                 datasets: [{
                     label: `Glucose (${unitLabel})`,
-                    data: data,
+                    data: chartData,
                     borderColor: '#4fc3f7',
                     backgroundColor: '#4fc3f7',
                     fill: false,
@@ -492,7 +499,7 @@ Module.register("MMM-SugarValue", {
                     },
                     tooltip: {
                         callbacks: {
-                            label: (context: any) => `${context.raw} ${unitLabel}`
+                            label: (context: any) => `${context.parsed.y} ${unitLabel}`
                         }
                     },
                     datalabels: {
@@ -501,18 +508,18 @@ Module.register("MMM-SugarValue", {
                 },
                 scales: {
                     x: {
-                        type: 'time',
-                        time: {
-                            unit: 'hour',
-                            displayFormats: {
-                                hour: 'h a'
-                            }
-                        },
+                        type: 'linear',
+                        min: startHour,
+                        max: endHour,
                         grid: {
                             color: 'rgba(255, 255, 255, 0.1)'
                         },
                         ticks: {
-                            color: '#aaa'
+                            color: '#aaa',
+                            stepSize: 3600000, // 1 hour in milliseconds
+                            callback: function(value: number) {
+                                return moment(value).format("h A");
+                            }
                         }
                     },
                     y: {
