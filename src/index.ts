@@ -499,7 +499,7 @@ Module.register("MMM-SugarValue", {
                     x: {
                         type: 'linear',
                         min: minTime,
-                        max: maxTime,
+                        max: maxTime + 5 * 60 * 1000, // Add 5 minutes padding on right
                         afterBuildTicks: function(axis: any) {
                             // Generate ticks at local clock hour boundaries within the data range
                             const d = new Date(minTime);

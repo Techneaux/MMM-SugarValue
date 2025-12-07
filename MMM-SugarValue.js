@@ -6107,7 +6107,7 @@
                         x: {
                             type: 'linear',
                             min: minTime,
-                            max: maxTime,
+                            max: maxTime + 5 * 60 * 1000,
                             afterBuildTicks: function (axis) {
                                 // Generate ticks at local clock hour boundaries within the data range
                                 var d = new Date(minTime);
