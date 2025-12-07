@@ -6124,14 +6124,15 @@
                         },
                         y: {
                             position: 'right',
-                            min: usesMg ? 25 : 1.4,
-                            max: usesMg ? 425 : 23.6,
+                            min: usesMg ? 0 : 0,
+                            max: usesMg ? 450 : 25,
                             afterBuildTicks: function (axis) {
                                 if (usesMg) {
-                                    axis.ticks = [50, 100, 200, 300, 400].map(function (v) { return ({ value: v }); });
+                                    // Ticks at 50, 100, 150, 200, 250, 300, 350, 400
+                                    axis.ticks = [50, 100, 150, 200, 250, 300, 350, 400].map(function (v) { return ({ value: v }); });
                                 }
                                 else {
-                                    axis.ticks = [5, 10, 15, 20].map(function (v) { return ({ value: v }); });
+                                    axis.ticks = [2.5, 5, 7.5, 10, 12.5, 15, 17.5, 20].map(function (v) { return ({ value: v }); });
                                 }
                             },
                             grid: {
@@ -6142,7 +6143,16 @@
                                 color: 'rgba(255, 255, 255, 0.1)'
                             },
                             ticks: {
-                                color: '#aaa'
+                                color: '#aaa',
+                                callback: function (value) {
+                                    // Only show labels for 50, 100, 200, 300, 400 (hide 150, 250, 350)
+                                    if (usesMg) {
+                                        return [50, 100, 200, 300, 400].indexOf(value) >= 0 ? value : '';
+                                    }
+                                    else {
+                                        return [5, 10, 15, 20].indexOf(value) >= 0 ? value : '';
+                                    }
+                                }
                             }
                         }
                     }
