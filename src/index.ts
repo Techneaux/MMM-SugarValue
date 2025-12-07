@@ -477,7 +477,8 @@ Module.register("MMM-SugarValue", {
                     fill: false,
                     showLine: false,
                     pointRadius: 4,
-                    pointHoverRadius: 6
+                    pointHoverRadius: 6,
+                    clip: false
                 }]
             },
             options: {
