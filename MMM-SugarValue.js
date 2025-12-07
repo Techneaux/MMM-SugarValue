@@ -6066,16 +6066,10 @@
                 }
                 return;
             }
-            // Calculate x-axis boundaries aligned to clock hours
+            // Use actual data bounds for x-axis (no padding, no rounding)
             var timestamps = chartData.map(function (d) { return d.x; });
             var minTime = Math.min.apply(Math, timestamps);
             var maxTime = Math.max.apply(Math, timestamps);
-            var padding = 15 * 60 * 1000; // 15 minutes in milliseconds
-            var oneHour = 3600000; // 1 hour in milliseconds
-            // Round down to nearest hour so tick marks align with actual clock hours
-            var startHour = Math.floor((minTime - padding) / oneHour) * oneHour;
-            // Round up to nearest hour for consistent alignment
-            var endHour = Math.ceil((maxTime + padding) / oneHour) * oneHour;
             // Get threshold limits for annotations
             var lowLimit = this.config ? this.config.lowlimit : undefined;
             var highLimit = this.config ? this.config.highlimit : undefined;
@@ -6111,8 +6105,8 @@
                     scales: {
                         x: {
                             type: 'linear',
-                            min: startHour,
-                            max: endHour,
+                            min: minTime,
+                            max: maxTime,
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
                             },
