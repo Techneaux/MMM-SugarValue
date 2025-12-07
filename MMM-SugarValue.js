@@ -6044,22 +6044,14 @@
                 return dateA - dateB;
             });
             var usesMg = this.config && this.config.units === "mg";
+            var unitLabel = usesMg ? "mg/dL" : "mmol/L";
             // Prepare chart data as {x: timestamp, y: value} for linear time scale
             var chartData = sortedReadings.map(function (r) { return ({
                 x: r.date ? new Date(r.date).getTime() : Date.now(),
                 y: usesMg ? r.sugarMg : r.sugarMmol
             }); });
-            // Calculate hour boundaries for x-axis
-            var timestamps = chartData.map(function (d) { return d.x; });
-            var minTime = Math.min.apply(Math, timestamps);
-            var maxTime = Math.max.apply(Math, timestamps);
-            var startHour = Math.floor(minTime / 3600000) * 3600000; // Round down to hour
-            var endHour = Math.ceil(maxTime / 3600000) * 3600000; // Round up to hour
-            // Extract y values for min/max calculation
-            var data = chartData.map(function (d) { return d.y; });
-            var unitLabel = usesMg ? "mg/dL" : "mmol/L";
-            // Handle empty data case
-            if (data.length === 0) {
+            // Handle empty data case FIRST (before calculations that use Math.min/max)
+            if (chartData.length === 0) {
                 var chartContainer = document.getElementById("sugar-history-chart");
                 if (chartContainer && chartContainer.parentElement) {
                     // Remove any existing error messages first
@@ -6074,6 +6066,16 @@
                 }
                 return;
             }
+            // Calculate x-axis boundaries with 15-minute padding
+            var timestamps = chartData.map(function (d) { return d.x; });
+            var minTime = Math.min.apply(Math, timestamps);
+            var maxTime = Math.max.apply(Math, timestamps);
+            var padding = 15 * 60 * 1000; // 15 minutes in milliseconds
+            var startHour = minTime - padding;
+            // Ensure at least 1 hour range to prevent zero-width axis
+            var endHour = Math.max(startHour + 3600000, maxTime + padding);
+            // Extract y values for min/max calculation
+            var data = chartData.map(function (d) { return d.y; });
             // Determine y-axis range based on data and thresholds
             var minValue = Math.min.apply(Math, data);
             var maxValue = Math.max.apply(Math, data);
@@ -6126,9 +6128,7 @@
                             display: false
                         },
                         tooltip: {
-                            callbacks: {
-                                label: function (context) { return context.parsed.y + " " + unitLabel; }
-                            }
+                            enabled: false
                         },
                         datalabels: {
                             display: false

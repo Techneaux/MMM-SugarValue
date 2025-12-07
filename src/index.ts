@@ -406,6 +406,7 @@ Module.register("MMM-SugarValue", {
         });
 
         const usesMg = this.config && this.config.units === "mg";
+        const unitLabel = usesMg ? "mg/dL" : "mmol/L";
 
         // Prepare chart data as {x: timestamp, y: value} for linear time scale
         const chartData = sortedReadings.map(r => ({
@@ -413,19 +414,8 @@ Module.register("MMM-SugarValue", {
             y: usesMg ? r.sugarMg : r.sugarMmol
         }));
 
-        // Calculate hour boundaries for x-axis
-        const timestamps = chartData.map(d => d.x);
-        const minTime = Math.min(...timestamps);
-        const maxTime = Math.max(...timestamps);
-        const startHour = Math.floor(minTime / 3600000) * 3600000; // Round down to hour
-        const endHour = Math.ceil(maxTime / 3600000) * 3600000;    // Round up to hour
-
-        // Extract y values for min/max calculation
-        const data = chartData.map(d => d.y);
-        const unitLabel = usesMg ? "mg/dL" : "mmol/L";
-
-        // Handle empty data case
-        if (data.length === 0) {
+        // Handle empty data case FIRST (before calculations that use Math.min/max)
+        if (chartData.length === 0) {
             const chartContainer = document.getElementById("sugar-history-chart");
             if (chartContainer && chartContainer.parentElement) {
                 // Remove any existing error messages first
@@ -440,6 +430,18 @@ Module.register("MMM-SugarValue", {
             }
             return;
         }
+
+        // Calculate x-axis boundaries with 15-minute padding
+        const timestamps = chartData.map(d => d.x);
+        const minTime = Math.min(...timestamps);
+        const maxTime = Math.max(...timestamps);
+        const padding = 15 * 60 * 1000; // 15 minutes in milliseconds
+        const startHour = minTime - padding;
+        // Ensure at least 1 hour range to prevent zero-width axis
+        const endHour = Math.max(startHour + 3600000, maxTime + padding);
+
+        // Extract y values for min/max calculation
+        const data = chartData.map(d => d.y);
 
         // Determine y-axis range based on data and thresholds
         const minValue = Math.min(...data);
@@ -498,9 +500,7 @@ Module.register("MMM-SugarValue", {
                         display: false
                     },
                     tooltip: {
-                        callbacks: {
-                            label: (context: any) => `${context.parsed.y} ${unitLabel}`
-                        }
+                        enabled: false
                     },
                     datalabels: {
                         display: false
