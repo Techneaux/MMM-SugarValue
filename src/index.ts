@@ -64,6 +64,7 @@ Module.register("MMM-SugarValue", {
     getScripts(): string[] {
         return [
             "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
+            "https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js",
             "https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"
         ];
     },
@@ -218,9 +219,11 @@ Module.register("MMM-SugarValue", {
                     this.message = undefined;
                     this.isError = false;
                 }
-                // Defer DOM updates while modal is open
-                if (!this.isModalOpen) {
-                    this._updateDom();
+                // Always update the main display
+                this._updateDom();
+                // If modal is open, refresh the chart with latest data
+                if (this.isModalOpen) {
+                    this._requestHistoryData(this.selectedTimeRange);
                 }
             }
         }
@@ -307,9 +310,6 @@ Module.register("MMM-SugarValue", {
             document.body.removeChild(this.modalElement);
             this.modalElement = undefined;
         }
-
-        // Trigger DOM update in case new data arrived while modal was open
-        this._updateDom();
     },
     _createModalDom(): HTMLDivElement {
         const self = this;
@@ -518,8 +518,7 @@ Module.register("MMM-SugarValue", {
                     y: {
                         position: 'right',
                         suggestedMin: suggestedMin,
-                        max: usesMg ? 400 : undefined,
-                        suggestedMax: usesMg ? undefined : suggestedMax,
+                        suggestedMax: usesMg ? 400 : suggestedMax,
                         grid: {
                             color: 'rgba(255, 255, 255, 0.1)'
                         },
