@@ -6066,14 +6066,16 @@
                 }
                 return;
             }
-            // Calculate x-axis boundaries with 15-minute padding
+            // Calculate x-axis boundaries aligned to clock hours
             var timestamps = chartData.map(function (d) { return d.x; });
             var minTime = Math.min.apply(Math, timestamps);
             var maxTime = Math.max.apply(Math, timestamps);
             var padding = 15 * 60 * 1000; // 15 minutes in milliseconds
-            var startHour = minTime - padding;
-            // Ensure at least 1 hour range to prevent zero-width axis
-            var endHour = Math.max(startHour + 3600000, maxTime + padding);
+            var oneHour = 3600000; // 1 hour in milliseconds
+            // Round down to nearest hour so tick marks align with actual clock hours
+            var startHour = Math.floor((minTime - padding) / oneHour) * oneHour;
+            // Round up to nearest hour for consistent alignment
+            var endHour = Math.ceil((maxTime + padding) / oneHour) * oneHour;
             // Get threshold limits for annotations
             var lowLimit = this.config ? this.config.lowlimit : undefined;
             var highLimit = this.config ? this.config.highlimit : undefined;
