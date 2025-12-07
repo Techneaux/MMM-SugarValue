@@ -6077,28 +6077,6 @@
             // Get threshold limits for annotations
             var lowLimit = this.config ? this.config.lowlimit : undefined;
             var highLimit = this.config ? this.config.highlimit : undefined;
-            // Build threshold line annotations
-            var annotations = {};
-            if (lowLimit !== undefined) {
-                annotations.lowLine = {
-                    type: 'line',
-                    yMin: lowLimit,
-                    yMax: lowLimit,
-                    borderColor: '#dc3545',
-                    borderWidth: 2,
-                    borderDash: [5, 5]
-                };
-            }
-            if (highLimit !== undefined) {
-                annotations.highLine = {
-                    type: 'line',
-                    yMin: highLimit,
-                    yMax: highLimit,
-                    borderColor: '#ffc107',
-                    borderWidth: 2,
-                    borderDash: [5, 5]
-                };
-            }
             // Build chart configuration
             var chartConfig = {
                 type: 'line',
@@ -6150,13 +6128,17 @@
                             max: usesMg ? 425 : 23.6,
                             afterBuildTicks: function (axis) {
                                 if (usesMg) {
-                                    axis.ticks = [100, 200, 300, 400].map(function (v) { return ({ value: v }); });
+                                    axis.ticks = [50, 100, 200, 300, 400].map(function (v) { return ({ value: v }); });
                                 }
                                 else {
                                     axis.ticks = [5, 10, 15, 20].map(function (v) { return ({ value: v }); });
                                 }
                             },
                             grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            border: {
+                                display: true,
                                 color: 'rgba(255, 255, 255, 0.1)'
                             },
                             ticks: {
@@ -6166,41 +6148,52 @@
                     }
                 }
             };
-            // Add threshold annotations if Chart.js annotation plugin is available
-            if (Object.keys(annotations).length > 0 && typeof Chart !== 'undefined') {
-                // Draw threshold lines using afterDraw hook since annotation plugin may not be loaded
-                chartConfig.plugins = [{
-                        afterDraw: function (chart) {
-                            var ctx = chart.ctx;
-                            var yAxis = chart.scales.y;
-                            var xAxis = chart.scales.x;
-                            if (lowLimit !== undefined) {
-                                var yPos = yAxis.getPixelForValue(lowLimit);
-                                ctx.save();
-                                ctx.beginPath();
-                                ctx.setLineDash([5, 5]);
-                                ctx.strokeStyle = '#dc3545';
-                                ctx.lineWidth = 2;
-                                ctx.moveTo(xAxis.left, yPos);
-                                ctx.lineTo(xAxis.right, yPos);
-                                ctx.stroke();
-                                ctx.restore();
-                            }
-                            if (highLimit !== undefined) {
-                                var yPos = yAxis.getPixelForValue(highLimit);
-                                ctx.save();
-                                ctx.beginPath();
-                                ctx.setLineDash([5, 5]);
-                                ctx.strokeStyle = '#ffc107';
-                                ctx.lineWidth = 2;
-                                ctx.moveTo(xAxis.left, yPos);
-                                ctx.lineTo(xAxis.right, yPos);
-                                ctx.stroke();
-                                ctx.restore();
-                            }
+            // Draw custom lines using afterDraw hook
+            chartConfig.plugins = [{
+                    afterDraw: function (chart) {
+                        var ctx = chart.ctx;
+                        var yAxis = chart.scales.y;
+                        var xAxis = chart.scales.x;
+                        // Draw top and bottom border lines
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                        ctx.lineWidth = 1;
+                        // Top line
+                        ctx.moveTo(xAxis.left, yAxis.top);
+                        ctx.lineTo(xAxis.right, yAxis.top);
+                        // Bottom line
+                        ctx.moveTo(xAxis.left, yAxis.bottom);
+                        ctx.lineTo(xAxis.right, yAxis.bottom);
+                        ctx.stroke();
+                        ctx.restore();
+                        // Draw threshold lines if configured
+                        if (lowLimit !== undefined) {
+                            var yPos = yAxis.getPixelForValue(lowLimit);
+                            ctx.save();
+                            ctx.beginPath();
+                            ctx.setLineDash([5, 5]);
+                            ctx.strokeStyle = '#dc3545';
+                            ctx.lineWidth = 2;
+                            ctx.moveTo(xAxis.left, yPos);
+                            ctx.lineTo(xAxis.right, yPos);
+                            ctx.stroke();
+                            ctx.restore();
                         }
-                    }];
-            }
+                        if (highLimit !== undefined) {
+                            var yPos = yAxis.getPixelForValue(highLimit);
+                            ctx.save();
+                            ctx.beginPath();
+                            ctx.setLineDash([5, 5]);
+                            ctx.strokeStyle = '#ffc107';
+                            ctx.lineWidth = 2;
+                            ctx.moveTo(xAxis.left, yPos);
+                            ctx.lineTo(xAxis.right, yPos);
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+                    }
+                }];
             // Create chart
             this.chartInstance = new Chart(canvas, chartConfig);
         },

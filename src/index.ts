@@ -520,12 +520,16 @@ Module.register("MMM-SugarValue", {
                         max: usesMg ? 425 : 23.6,
                         afterBuildTicks: function(axis: any) {
                             if (usesMg) {
-                                axis.ticks = [100, 200, 300, 400].map(v => ({ value: v }));
+                                axis.ticks = [50, 100, 200, 300, 400].map(v => ({ value: v }));
                             } else {
                                 axis.ticks = [5, 10, 15, 20].map(v => ({ value: v }));
                             }
                         },
                         grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        border: {
+                            display: true,
                             color: 'rgba(255, 255, 255, 0.1)'
                         },
                         ticks: {
@@ -536,43 +540,55 @@ Module.register("MMM-SugarValue", {
             }
         };
 
-        // Add threshold annotations if Chart.js annotation plugin is available
-        if (Object.keys(annotations).length > 0 && typeof Chart !== 'undefined') {
-            // Draw threshold lines using afterDraw hook since annotation plugin may not be loaded
-            chartConfig.plugins = [{
-                afterDraw: (chart: any) => {
-                    const ctx = chart.ctx;
-                    const yAxis = chart.scales.y;
-                    const xAxis = chart.scales.x;
+        // Draw custom lines using afterDraw hook
+        chartConfig.plugins = [{
+            afterDraw: (chart: any) => {
+                const ctx = chart.ctx;
+                const yAxis = chart.scales.y;
+                const xAxis = chart.scales.x;
 
-                    if (lowLimit !== undefined) {
-                        const yPos = yAxis.getPixelForValue(lowLimit);
-                        ctx.save();
-                        ctx.beginPath();
-                        ctx.setLineDash([5, 5]);
-                        ctx.strokeStyle = '#dc3545';
-                        ctx.lineWidth = 2;
-                        ctx.moveTo(xAxis.left, yPos);
-                        ctx.lineTo(xAxis.right, yPos);
-                        ctx.stroke();
-                        ctx.restore();
-                    }
+                // Draw top and bottom border lines
+                ctx.save();
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.lineWidth = 1;
+                // Top line
+                ctx.moveTo(xAxis.left, yAxis.top);
+                ctx.lineTo(xAxis.right, yAxis.top);
+                // Bottom line
+                ctx.moveTo(xAxis.left, yAxis.bottom);
+                ctx.lineTo(xAxis.right, yAxis.bottom);
+                ctx.stroke();
+                ctx.restore();
 
-                    if (highLimit !== undefined) {
-                        const yPos = yAxis.getPixelForValue(highLimit);
-                        ctx.save();
-                        ctx.beginPath();
-                        ctx.setLineDash([5, 5]);
-                        ctx.strokeStyle = '#ffc107';
-                        ctx.lineWidth = 2;
-                        ctx.moveTo(xAxis.left, yPos);
-                        ctx.lineTo(xAxis.right, yPos);
-                        ctx.stroke();
-                        ctx.restore();
-                    }
+                // Draw threshold lines if configured
+                if (lowLimit !== undefined) {
+                    const yPos = yAxis.getPixelForValue(lowLimit);
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.setLineDash([5, 5]);
+                    ctx.strokeStyle = '#dc3545';
+                    ctx.lineWidth = 2;
+                    ctx.moveTo(xAxis.left, yPos);
+                    ctx.lineTo(xAxis.right, yPos);
+                    ctx.stroke();
+                    ctx.restore();
                 }
-            }];
-        }
+
+                if (highLimit !== undefined) {
+                    const yPos = yAxis.getPixelForValue(highLimit);
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.setLineDash([5, 5]);
+                    ctx.strokeStyle = '#ffc107';
+                    ctx.lineWidth = 2;
+                    ctx.moveTo(xAxis.left, yPos);
+                    ctx.lineTo(xAxis.right, yPos);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        }];
 
         // Create chart
         this.chartInstance = new Chart(canvas, chartConfig);
