@@ -431,14 +431,16 @@ Module.register("MMM-SugarValue", {
             return;
         }
 
-        // Calculate x-axis boundaries with 15-minute padding
+        // Calculate x-axis boundaries aligned to clock hours
         const timestamps = chartData.map(d => d.x);
         const minTime = Math.min(...timestamps);
         const maxTime = Math.max(...timestamps);
         const padding = 15 * 60 * 1000; // 15 minutes in milliseconds
-        const startHour = minTime - padding;
-        // Ensure at least 1 hour range to prevent zero-width axis
-        const endHour = Math.max(startHour + 3600000, maxTime + padding);
+        const oneHour = 3600000; // 1 hour in milliseconds
+        // Round down to nearest hour so tick marks align with actual clock hours
+        const startHour = Math.floor((minTime - padding) / oneHour) * oneHour;
+        // Round up to nearest hour for consistent alignment
+        const endHour = Math.ceil((maxTime + padding) / oneHour) * oneHour;
 
         // Get threshold limits for annotations
         const lowLimit = this.config ? this.config.lowlimit : undefined;
