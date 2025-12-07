@@ -440,17 +440,9 @@ Module.register("MMM-SugarValue", {
         // Ensure at least 1 hour range to prevent zero-width axis
         const endHour = Math.max(startHour + 3600000, maxTime + padding);
 
-        // Extract y values for min/max calculation
-        const data = chartData.map(d => d.y);
-
-        // Determine y-axis range based on data and thresholds
-        const minValue = Math.min(...data);
-        const maxValue = Math.max(...data);
+        // Get threshold limits for annotations
         const lowLimit = this.config ? this.config.lowlimit : undefined;
         const highLimit = this.config ? this.config.highlimit : undefined;
-
-        let suggestedMin = Math.floor(Math.min(minValue, lowLimit || minValue) * 0.9);
-        let suggestedMax = Math.ceil(Math.max(maxValue, highLimit || maxValue) * 1.1);
 
         // Build threshold line annotations
         const annotations: any = {};
@@ -524,13 +516,21 @@ Module.register("MMM-SugarValue", {
                     },
                     y: {
                         position: 'right',
-                        suggestedMin: suggestedMin,
-                        suggestedMax: usesMg ? 400 : suggestedMax,
+                        min: usesMg ? 25 : 1.4,
+                        max: usesMg ? 425 : 23.6,
                         grid: {
                             color: 'rgba(255, 255, 255, 0.1)'
                         },
                         ticks: {
-                            color: '#aaa'
+                            color: '#aaa',
+                            stepSize: usesMg ? 100 : 5,
+                            callback: function(value: number) {
+                                if (usesMg) {
+                                    return value >= 100 && value <= 400 && value % 100 === 0 ? value : '';
+                                } else {
+                                    return value >= 5 && value <= 20 && value % 5 === 0 ? value : '';
+                                }
+                            }
                         }
                     }
                 }
