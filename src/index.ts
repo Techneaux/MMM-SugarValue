@@ -500,6 +500,12 @@ Module.register("MMM-SugarValue", {
                         type: 'linear',
                         min: minTime,
                         max: maxTime,
+                        afterBuildTicks: function(axis: any) {
+                            // Filter ticks to only show hours within the actual data range
+                            axis.ticks = axis.ticks.filter((tick: any) =>
+                                tick.value >= minTime && tick.value <= maxTime
+                            );
+                        },
                         grid: {
                             color: 'rgba(255, 255, 255, 0.1)'
                         },

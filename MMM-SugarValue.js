@@ -6108,6 +6108,12 @@
                             type: 'linear',
                             min: minTime,
                             max: maxTime,
+                            afterBuildTicks: function (axis) {
+                                // Filter ticks to only show hours within the actual data range
+                                axis.ticks = axis.ticks.filter(function (tick) {
+                                    return tick.value >= minTime && tick.value <= maxTime;
+                                });
+                            },
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
                             },
