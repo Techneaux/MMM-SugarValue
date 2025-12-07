@@ -6148,20 +6148,19 @@
                             position: 'right',
                             min: usesMg ? 25 : 1.4,
                             max: usesMg ? 425 : 23.6,
+                            afterBuildTicks: function (axis) {
+                                if (usesMg) {
+                                    axis.ticks = [100, 200, 300, 400].map(function (v) { return ({ value: v }); });
+                                }
+                                else {
+                                    axis.ticks = [5, 10, 15, 20].map(function (v) { return ({ value: v }); });
+                                }
+                            },
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
                             },
                             ticks: {
-                                color: '#aaa',
-                                stepSize: usesMg ? 100 : 5,
-                                callback: function (value) {
-                                    if (usesMg) {
-                                        return value >= 100 && value <= 400 && value % 100 === 0 ? value : '';
-                                    }
-                                    else {
-                                        return value >= 5 && value <= 20 && value % 5 === 0 ? value : '';
-                                    }
-                                }
+                                color: '#aaa'
                             }
                         }
                     }
