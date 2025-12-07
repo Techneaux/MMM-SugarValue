@@ -6109,9 +6109,11 @@
                             min: minTime,
                             max: maxTime,
                             afterBuildTicks: function (axis) {
-                                // Filter ticks to only show hours within the actual data range
+                                // Filter ticks to only show exact hour boundaries within the data range
                                 axis.ticks = axis.ticks.filter(function (tick) {
-                                    return tick.value >= minTime && tick.value <= maxTime;
+                                    var isHourBoundary = new Date(tick.value).getMinutes() === 0;
+                                    var isWithinRange = tick.value >= minTime && tick.value <= maxTime;
+                                    return isHourBoundary && isWithinRange;
                                 });
                             },
                             grid: {
