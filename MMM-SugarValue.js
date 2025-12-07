@@ -5726,8 +5726,8 @@
         getScripts: function () {
             return [
                 "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
-                "https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js",
-                "https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"
+                "https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js",
+                "https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"
             ];
         },
         message: "Loading...",
