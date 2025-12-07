@@ -6147,9 +6147,9 @@
                             ticks: {
                                 color: '#aaa',
                                 callback: function (value) {
-                                    // Only show labels for 50, 100, 200, 300, 400 (hide 150, 250, 350)
+                                    // Show labels for 50, 100, 150, 200, 250, 300, 350, 400
                                     if (usesMg) {
-                                        return [50, 100, 200, 300, 400].indexOf(value) >= 0 ? value : '';
+                                        return [50, 100, 150, 200, 250, 300, 350, 400].indexOf(value) >= 0 ? value : '';
                                     }
                                     else {
                                         return [5, 10, 15, 20].indexOf(value) >= 0 ? value : '';
