@@ -47,7 +47,6 @@ class DexcomApiImpl implements DexcomApi {
 
     private doPost(uri: string, body: any, callback?: request.RequestCallback): request.Request {
         let bodyAsString: string = body == undefined ? "" : JSON.stringify(body);
-        console.log("POST", uri, bodyAsString);
         return request(
             {
                 uri: "https://" + uri,
