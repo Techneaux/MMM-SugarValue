@@ -84,7 +84,6 @@
         }
         DexcomApiImpl.prototype.doPost = function (uri, body, callback) {
             var bodyAsString = body == undefined ? "" : JSON.stringify(body);
-            console.log("POST", uri, bodyAsString);
             return request({
                 uri: "https://" + uri,
                 method: "POST",
