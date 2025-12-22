@@ -161,7 +161,7 @@ class DexcomApiImpl implements DexcomApi {
                 callback({ error: this.parseErrorResponse(undefined, error, body, "Fetch readings"), readings: [] });
             } else if (error != null || response.statusCode !== 200) {
                 // Session invalid - clear it so next retry starts fresh
-                console.log(`[${new Date().toISOString()}] Fetch failed, clearing session`);
+                console.log("[MMM-SugarValue] Fetch failed, clearing session");
                 this._sessionId = null;
                 callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Fetch readings"), readings: [] });
             } else {
@@ -180,7 +180,7 @@ class DexcomApiImpl implements DexcomApi {
                 callback({ error: this.parseErrorResponse(undefined, error, body, "Login"), readings: [] });
             } else if (error != null || response.statusCode !== 200) {
                 // AccountId may be stale - clear it so next retry does full auth
-                console.log(`[${new Date().toISOString()}] Login failed, clearing accountId`);
+                console.log("[MMM-SugarValue] Login failed, clearing accountId");
                 this._accountId = null;
                 callback({ error: this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
             } else {
@@ -190,20 +190,16 @@ class DexcomApiImpl implements DexcomApi {
                     return;
                 }
                 this._sessionId = sessionId;
-                console.log(`[${new Date().toISOString()}] Session obtained`);
                 this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
             }
         };
 
         // Main logic - try with current cache state
         if (this._sessionId) {
-            console.log(`[${new Date().toISOString()}] Using cached session`);
             this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
         } else if (this._accountId) {
-            console.log(`[${new Date().toISOString()}] Using cached accountId, need new session`);
             this.loginById(this._accountId, handleLoginResult);
         } else {
-            console.log(`[${new Date().toISOString()}] Cold start, full authentication`);
             this.authenticatePublisherAccount((error: any, response: request.Response, body: any) => {
                 if (!response) {
                     callback({ error: this.parseErrorResponse(undefined, error, body, "Authenticate"), readings: [] });
@@ -216,7 +212,6 @@ class DexcomApiImpl implements DexcomApi {
                         return;
                     }
                     this._accountId = accountId;
-                    console.log(`[${new Date().toISOString()}] AccountId cached`);
                     this.loginById(this._accountId, handleLoginResult);
                 }
             });
