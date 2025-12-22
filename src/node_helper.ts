@@ -33,7 +33,7 @@ module.exports = NodeHelper.create({
                         if (this.api) {
                             this.fetchData(this.api, config.updateSecs);
                         } else {
-                            console.error("API not initialized");
+                            console.error("[MMM-SugarValue] API not initialized");
                         }
                     }, 500);
                 }
@@ -55,7 +55,7 @@ module.exports = NodeHelper.create({
         // Set timeout to detect if API call gets stuck
         const timeoutId = setTimeout(() => {
             if (!callbackInvoked) {
-                console.error(`[${new Date().toISOString()}] Dexcom API call timed out after ${timeoutMs}ms`);
+                console.error(`[MMM-SugarValue] Dexcom API call timed out after ${timeoutMs}ms`);
                 this._sendSocketNotification(ModuleNotification.DATA, {
                     apiResponse: {
                         error: {
@@ -77,7 +77,7 @@ module.exports = NodeHelper.create({
             }, 3, 1);
         } catch (error) {
             callbackInvoked = true;  // Prevent timeout from also firing
-            console.error(`[${new Date().toISOString()}] Exception in fetchData:`, error);
+            console.error("[MMM-SugarValue] Exception in fetchData:", error);
             clearTimeout(timeoutId);
             this._sendSocketNotification(ModuleNotification.DATA, {
                 apiResponse: {
@@ -101,14 +101,14 @@ module.exports = NodeHelper.create({
         api.fetchDataCached((response: DexcomApiResponse) => {
             if (response.error && attempt < maxRetries) {
                 const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
-                console.log(`[${new Date().toISOString()}] Attempt ${attempt}/${maxRetries} failed: ${response.error.message}. Retrying in ${delay}ms...`);
+                console.log(`[MMM-SugarValue] Attempt ${attempt}/${maxRetries} failed: ${response.error.message}. Retrying in ${delay}ms...`);
                 setTimeout(() => {
                     this.fetchDataWithRetry(api, callback, maxRetries, attempt + 1);
                 }, delay);
             } else {
                 // Only callback (which triggers UI update) on success or final failure
                 if (response.error) {
-                    console.error(`[${new Date().toISOString()}] All ${maxRetries} attempts failed: ${response.error.message}`);
+                    console.error(`[MMM-SugarValue] All ${maxRetries} attempts failed: ${response.error.message}`);
                 }
                 callback(response);
             }
@@ -131,7 +131,7 @@ module.exports = NodeHelper.create({
         if (this.sendSocketNotification !== undefined) {
             this.sendSocketNotification(notification, payload);
         } else {
-            console.error("sendSocketNotification is not present");
+            console.error("[MMM-SugarValue] sendSocketNotification is not present");
         }
     },
 } as ModuleNodeHelper);

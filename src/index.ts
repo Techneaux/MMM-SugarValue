@@ -176,7 +176,6 @@ Module.register("MMM-SugarValue", {
         return wrapper;
     },
     start():void {
-        console.log("Starting");
         const config: Config | undefined = this.config;
         if (config == undefined) {
             this.message = "Configuration is not defined";
@@ -244,7 +243,7 @@ Module.register("MMM-SugarValue", {
             if (historyResponse && !historyResponse.error) {
                 this._renderChart(historyResponse.readings);
             } else if (historyResponse && historyResponse.error) {
-                console.error("History fetch error:", historyResponse.error);
+                console.error("[MMM-SugarValue] History fetch error:", historyResponse.error);
                 // Show error in chart area
                 const chartContainer = document.getElementById("sugar-history-chart");
                 if (chartContainer && chartContainer.parentElement) {
@@ -266,7 +265,7 @@ Module.register("MMM-SugarValue", {
         if (this.sendSocketNotification !== undefined) {
             this.sendSocketNotification(notification, payload);
         } else {
-            console.error("sendSocketNotification is not present");
+            console.error("[MMM-SugarValue] sendSocketNotification is not present");
         }
     },
     _updateDom(): void {

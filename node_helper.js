@@ -179,7 +179,7 @@
                 }
                 else if (error != null || response.statusCode !== 200) {
                     // Session invalid - clear it so next retry starts fresh
-                    console.log("[" + new Date().toISOString() + "] Fetch failed, clearing session");
+                    console.log("[MMM-SugarValue] Fetch failed, clearing session");
                     _this._sessionId = null;
                     callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Fetch readings"), readings: [] });
                 }
@@ -200,7 +200,7 @@
                 }
                 else if (error != null || response.statusCode !== 200) {
                     // AccountId may be stale - clear it so next retry does full auth
-                    console.log("[" + new Date().toISOString() + "] Login failed, clearing accountId");
+                    console.log("[MMM-SugarValue] Login failed, clearing accountId");
                     _this._accountId = null;
                     callback({ error: _this.parseErrorResponse(response.statusCode, error, body, "Login"), readings: [] });
                 }
@@ -211,21 +211,17 @@
                         return;
                     }
                     _this._sessionId = sessionId;
-                    console.log("[" + new Date().toISOString() + "] Session obtained");
                     _this.fetchLatest(_this._sessionId, maxCount, minutes, handleFetchResult);
                 }
             };
             // Main logic - try with current cache state
             if (this._sessionId) {
-                console.log("[" + new Date().toISOString() + "] Using cached session");
                 this.fetchLatest(this._sessionId, maxCount, minutes, handleFetchResult);
             }
             else if (this._accountId) {
-                console.log("[" + new Date().toISOString() + "] Using cached accountId, need new session");
                 this.loginById(this._accountId, handleLoginResult);
             }
             else {
-                console.log("[" + new Date().toISOString() + "] Cold start, full authentication");
                 this.authenticatePublisherAccount(function (error, response, body) {
                     if (!response) {
                         callback({ error: _this.parseErrorResponse(undefined, error, body, "Authenticate"), readings: [] });
@@ -240,7 +236,6 @@
                             return;
                         }
                         _this._accountId = accountId;
-                        console.log("[" + new Date().toISOString() + "] AccountId cached");
                         _this.loginById(_this._accountId, handleLoginResult);
                     }
                 });
@@ -280,7 +275,7 @@
                                 _this.fetchData(_this.api, config_1.updateSecs);
                             }
                             else {
-                                console.error("API not initialized");
+                                console.error("[MMM-SugarValue] API not initialized");
                             }
                         }, 500);
                     }
@@ -302,7 +297,7 @@
             // Set timeout to detect if API call gets stuck
             var timeoutId = setTimeout(function () {
                 if (!callbackInvoked) {
-                    console.error("[" + new Date().toISOString() + "] Dexcom API call timed out after " + timeoutMs + "ms");
+                    console.error("[MMM-SugarValue] Dexcom API call timed out after " + timeoutMs + "ms");
                     _this._sendSocketNotification(ModuleNotification.DATA, {
                         apiResponse: {
                             error: {
@@ -324,7 +319,7 @@
             }
             catch (error) {
                 callbackInvoked = true; // Prevent timeout from also firing
-                console.error("[" + new Date().toISOString() + "] Exception in fetchData:", error);
+                console.error("[MMM-SugarValue] Exception in fetchData:", error);
                 clearTimeout(timeoutId);
                 this._sendSocketNotification(ModuleNotification.DATA, {
                     apiResponse: {
@@ -347,7 +342,7 @@
             api.fetchDataCached(function (response) {
                 if (response.error && attempt < maxRetries) {
                     var delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
-                    console.log("[" + new Date().toISOString() + "] Attempt " + attempt + "/" + maxRetries + " failed: " + response.error.message + ". Retrying in " + delay + "ms...");
+                    console.log("[MMM-SugarValue] Attempt " + attempt + "/" + maxRetries + " failed: " + response.error.message + ". Retrying in " + delay + "ms...");
                     setTimeout(function () {
                         _this.fetchDataWithRetry(api, callback, maxRetries, attempt + 1);
                     }, delay);
@@ -355,7 +350,7 @@
                 else {
                     // Only callback (which triggers UI update) on success or final failure
                     if (response.error) {
-                        console.error("[" + new Date().toISOString() + "] All " + maxRetries + " attempts failed: " + response.error.message);
+                        console.error("[MMM-SugarValue] All " + maxRetries + " attempts failed: " + response.error.message);
                     }
                     callback(response);
                 }
@@ -379,7 +374,7 @@
                 this.sendSocketNotification(notification, payload);
             }
             else {
-                console.error("sendSocketNotification is not present");
+                console.error("[MMM-SugarValue] sendSocketNotification is not present");
             }
         },
     });

@@ -5834,7 +5834,6 @@
         },
         start: function () {
             var _this = this;
-            console.log("Starting");
             var config = this.config;
             if (config == undefined) {
                 this.message = "Configuration is not defined";
@@ -5903,7 +5902,7 @@
                     this._renderChart(historyResponse.readings);
                 }
                 else if (historyResponse && historyResponse.error) {
-                    console.error("History fetch error:", historyResponse.error);
+                    console.error("[MMM-SugarValue] History fetch error:", historyResponse.error);
                     // Show error in chart area
                     var chartContainer = document.getElementById("sugar-history-chart");
                     if (chartContainer && chartContainer.parentElement) {
@@ -5925,7 +5924,7 @@
                 this.sendSocketNotification(notification, payload);
             }
             else {
-                console.error("sendSocketNotification is not present");
+                console.error("[MMM-SugarValue] sendSocketNotification is not present");
             }
         },
         _updateDom: function () {
